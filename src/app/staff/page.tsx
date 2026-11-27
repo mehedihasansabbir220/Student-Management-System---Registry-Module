@@ -10,6 +10,7 @@ import { formatDate, formatDateTime, relativeToNow } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/badges";
 import { EmptyState, Notice, PageHeader, StatCard } from "@/components/common";
+import { Greeting } from "@/components/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,11 +20,6 @@ export const dynamic = "force-dynamic";
 
 const th = "h-9 text-xs font-medium text-muted-foreground";
 const link = "font-medium text-primary hover:underline";
-
-function greeting(now: Date) {
-  const h = now.getHours();
-  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-}
 
 export default async function Dashboard() {
   const viewer = await requirePagePermission("dashboard.read");
@@ -184,7 +180,7 @@ export default async function Dashboard() {
 
   return (
     <>
-      <PageHeader title={`${greeting(now)}, ${firstName}`} subtitle={`What needs attention today · ${formatDate(now)}`} />
+      <PageHeader title={<Greeting name={firstName} />} subtitle={`What needs attention today · ${formatDate(now)}`} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5">
         {kpiList.map((k) => <div key={k}>{kpis[k]}</div>)}

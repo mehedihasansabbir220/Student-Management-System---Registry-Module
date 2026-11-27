@@ -87,7 +87,7 @@ export default async function StudentPage({ params, searchParams }: Props) {
         portalStatus={s.portalAccount.status}
       />
 
-      <RecordTabs tabs={tabs} initial={resolveTab(tab, user.role)}>
+      <RecordTabs key={s.id} tabs={tabs} initial={resolveTab(tab, user.role)}>
         {/* ---------------- Overview ---------------- */}
         <TabsContent value="overview" className="grid gap-6">
           {may("finance.read") && a.isOverdue && (
