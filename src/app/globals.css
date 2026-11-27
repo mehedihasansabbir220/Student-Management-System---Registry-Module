@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+/* Shared form control look */
+.input {
+  @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition
+    placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20
+    disabled:cursor-not-allowed disabled:bg-slate-100 aria-[invalid=true]:border-rose-500 aria-[invalid=true]:ring-rose-500/20;
+}
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium shadow-sm transition
+    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-60;
+}
+.btn-primary { @apply bg-indigo-600 text-white hover:bg-indigo-700; }
+.btn-secondary { @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+.btn-danger { @apply bg-rose-600 text-white hover:bg-rose-700; }
+.btn-sm { @apply px-2.5 py-1.5 text-xs; }
+.link { @apply font-medium text-indigo-700 hover:text-indigo-900 hover:underline; }
+
+table.data { @apply w-full text-left text-sm; }
+table.data th { @apply border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500; }
+table.data td { @apply border-b border-slate-100 px-4 py-3 align-middle; }
+table.data tbody tr:hover { @apply bg-slate-50/60; }
