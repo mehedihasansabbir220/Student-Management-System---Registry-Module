@@ -7,9 +7,19 @@ A focused Registry application covering the four workflows a Registry Administra
 3. **Assessment submission** — PDF/DOCX uploads, resubmission rules, late flagging
 4. **Marksheet & results** — grade entry, classification, per-student publish/withhold
 
-**Stack:** Next.js 15 (App Router) · TypeScript · PostgreSQL · Prisma 6 · zod · Tailwind CSS 4 · Vitest
+Around them: **real sign-in with four roles** (Registry Admin, Finance, Academic, Student), an audit trail, and a staff app plus a student portal built on shadcn/ui.
 
-> The original brief is in [`requirement.md`](./requirement.md). Task breakdown, design notes and decisions per feature are in [`doc/`](./doc/README.md).
+**Stack:** Next.js 15 (App Router) · TypeScript · PostgreSQL · Prisma 6 · zod · Tailwind CSS 4 · shadcn/ui · jose (JWT) · Vitest · Playwright
+
+### Documentation
+
+| Document | What's in it |
+|---|---|
+| [`docs/FEATURES.md`](./docs/FEATURES.md) | Feature tour by role, with the edge cases each feature handles |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, request lifecycle, authentication, permission matrix, data model, UI system, error handling, testing |
+| [`requirement.md`](./requirement.md) | The original brief, followed by **requirement coverage** and **what was added beyond the brief, and why** |
+| [`doc/`](./doc/README.md) | v1 task breakdown and per-feature design notes |
+| [`docs/superpowers/`](./docs/superpowers/) | v2 design spec and implementation plans |
 
 ---
 
@@ -26,7 +36,16 @@ npm run db:setup                  # apply migrations + load demo data
 npm run dev                       # http://localhost:3000
 ```
 
-Open http://localhost:3000 and choose **Registry staff** or any student. Use the **"Viewing as"** switcher in the header to change role at any time.
+Open http://localhost:3000. With `DEMO_MODE=true` (the default in `.env.example`) the sign-in page shows **one-click demo accounts** for each role:
+
+| Account | Role | Password |
+|---|---|---|
+| `admin@demo.sms` | Registry Admin (everything) | `DEMO_PASSWORD` (default `Demo@12345`) |
+| `finance@demo.sms` | Finance Officer (fees and payments) | same |
+| `academic@demo.sms` | Academic Staff (assessments and marking) | same |
+| `amelia.clarke@student.example.ac.uk` | Student (portal) | same |
+
+Every seeded student can sign in with `firstname.lastname@student.example.ac.uk`, except James Wilson, whose account is left *invitation pending* to show the activation flow.
 
 ### Scripts
 
@@ -52,6 +71,9 @@ Open http://localhost:3000 and choose **Registry staff** or any student. Use the
 | `LOG_LEVEL` | | `info` | `debug` \| `info` \| `warn` \| `error` |
 | `LOG_FILE` | | `./logs/app.log` | Also append JSON logs to this file (empty = stdout only) |
 | `LOG_SQL` | | `false` | Log every SQL query at debug level |
+| `JWT_SECRET` | ✅ | `openssl rand -base64 48` | Signs access tokens (HS256). At least 32 characters |
+| `DEMO_MODE` | | `true` | Show one-click demo accounts on the sign-in page. **Never enable in a real deployment** |
+| `DEMO_PASSWORD` | | `Demo@12345` | Password for every seeded demo account |
 | `NEXT_DIST_DIR` | | `.next-verify` | Build output folder — lets you run a production build while `next dev` is running |
 
 Environment is validated on first use (`src/server/config.ts`); a bad value fails loudly with a clear message.
@@ -60,7 +82,7 @@ Environment is validated on first use (`src/server/config.ts`); a bad value fail
 
 ## Demo data
 
-`npm run db:seed` creates 2 programmes, 4 modules, 5 assessments and 8 students. Every record goes through the **real service layer**, so IDs, fee snapshots, lateness and the audit trail are produced exactly as in the UI. Dates are relative to "today", so overdue and late states always look right.
+`npm run db:seed` creates 2 programmes, 4 modules, 5 assessments, 8 students and the demo staff accounts. Every record goes through the **real service layer**, so IDs, fee snapshots, lateness and the audit trail are produced exactly as in the UI. Dates are relative to "today", so overdue and late states always look right.
 
 | Student | Programme | Demonstrates |
 |---|---|---|
@@ -122,7 +144,12 @@ The brief sets the core rules; these are the decisions I made where it was silen
 - Grading a student with no submission is allowed (e.g. a 0 for non-submission) but warned. Changing a grade **after publication** is allowed, audited with `afterPublication: true`, and logged as a warning.
 
 ### Registry dashboard
-Overdue balances (largest first, with days overdue), deadlines in the next 7 days with outstanding counts, recent late submissions, results awaiting release, and a finance summary (billed / collected / outstanding / credit).
+Overdue balances (oldest debt first, with days overdue), deadlines in the next 7 days with outstanding counts, recent late submissions, results awaiting release, and a finance summary (billed / collected / outstanding / credit). **What each role sees follows its permissions:** Finance gets the money queues, Academic the coursework queues, the Registry Admin everything.
+
+### Roles & access
+- **Four roles.** Academics mark work but releasing results is a Registry decision; Finance handles money but never touches grades. One permission matrix (`src/domain/permissions.ts`) drives the API guards, page guards, navigation, dashboard and student-record tabs.
+- **Data is withheld, not just hidden.** A page only loads the sections a role may see, so finance figures never reach an Academic's browser and marks never reach Finance's.
+- **Shared demo accounts are protected on the server:** they can't be locked, have their password changed, or sign other reviewers out, and each reviewer only sees their own session.
 
 ---
 
@@ -130,91 +157,65 @@ Overdue balances (largest first, with days overdue), deadlines in the next 7 day
 
 ```
 src/
-  domain/        Pure business rules (no I/O): fees, grades, submissions, student IDs, money, file types
-  server/
-    services/    Use-cases: students, fees, assessments, submissions, results, dashboard
-    http.ts      Route wrapper: request id, access log, error → HTTP mapping
-    errors.ts    Typed AppErrors (Validation 400, Forbidden 403, NotFound 404, Conflict 409, BusinessRule 422, …)
-    logger.ts    Structured JSON logger with per-request context (AsyncLocalStorage)
-    session.ts   Simulated auth + requireStaff / requireStudent guards
-    audit.ts     Audit entries written in the same transaction as the change
-    storage.ts   File storage (swappable for S3)
-  lib/           Shared with the browser: zod schemas, formatting, API client, access rules
-  app/           Pages (staff/, me/) and API routes (api/)
+  domain/        Pure business rules (no I/O): money, fees, grades, submissions, student IDs, file types, permissions
+  lib/           Shared with the browser: zod schemas, API client, access rules, UI logic (nav, table state, …)
+  server/        Services (use-cases), auth (scrypt, JWT, refresh rotation), guards, errors, logger, audit, storage
+  components/    shadcn/ui primitives, app shell, data table, form kit
+  app/           (auth)/ sign-in & activation · staff/ · me/ (student portal) · api/
 prisma/          Schema, migrations (incl. CHECK constraints), seed
-tests/           unit/ · integration/ (real Postgres) · e2e/ (running server)
+tests/           unit/ · integration/ (real Postgres) · e2e/ (running server) · browser/ (Playwright)
 ```
 
-- **Layering:** pages and API routes → services → domain. Business rules live in `src/domain` as pure functions, so they're trivially testable and shared between the server and the UI (e.g. the live classification preview uses the same `classify()` as the API).
-- **Server Components** read through services directly. **Mutations** go through the JSON API, so every write path is validated, authorised, audited and logged the same way.
-- **Defence in depth:** zod at the edge, rules in services, and unique + CHECK constraints in Postgres.
+- **Layering:** pages and API routes → services → domain. Rules are pure functions, shared by server and UI (the live classification preview uses the same `classify()` as the API).
+- **Reads** in Server Components go through services; **writes** always go through the JSON API, so every mutation is validated, authorised, audited and logged the same way.
+- **Authentication:** hand-written JWT (15-minute access token, 7-day rotating refresh token with reuse detection), scrypt passwords, lockout and per-IP rate limiting, single-use activation links.
+- **Defence in depth:** zod at the edge, rules in services, unique and CHECK constraints in Postgres.
+- **Errors:** one error body `{ error: { code, message, fields?, requestId } }`. Every request has an id that appears in the logs and on the user's screen as "Reference: …".
 
-### Data model
-
-```mermaid
-erDiagram
-  Programme ||--o{ Module : has
-  Programme ||--o{ Student : enrols
-  Module ||--o{ Assessment : sets
-  Student ||--o{ Fee : owes
-  Student ||--o{ Payment : pays
-  Student ||--o{ Submission : uploads
-  Student ||--o{ Grade : receives
-  Student ||--|| ResultRelease : "publish / withhold"
-  Student ||--o{ AuditLog : history
-  Assessment ||--o{ Submission : receives
-  Assessment ||--o{ Grade : marks
-```
-
-Unique constraints: `Student.studentNumber`, `Student.email`, `Payment.reference`, `Submission(assessmentId, studentId)`, `Grade(assessmentId, studentId)`. CHECK constraints: positive amounts, mark 0–100, academic-year/ID formats, lower-case email, a voided payment must have a reason.
-
-### Error handling & logging
-- Every API route is wrapped by `route()` (`src/server/http.ts`). Responses use one shape:
-  ```json
-  { "error": { "code": "CONFLICT", "message": "A payment with this reference has already been recorded",
-               "fields": { "reference": "…" }, "requestId": "4f0c…" } }
-  ```
-- Zod errors → 400 with per-field messages · Prisma unique (P2002) → 409 on the right field · not found (P2025) → 404 · DB unreachable → 503 · CHECK violation → 422 · malformed JSON → 400 · **anything unexpected → 500 with a generic message.** The stack trace goes to the log only, never to the client.
-- Every request gets an `x-request-id` (middleware + route wrapper). It appears on every log line, in the response header and in the error body, and forms show it as "ref …" so a user's report can be traced to the exact log entry.
-- Errors while rendering Server Components are captured by `src/instrumentation.ts` (`onRequestError`) into the same structured log.
-- Error boundaries: `error.tsx`, `global-error.tsx`, `not-found.tsx` (unknown records return a real **404 status**). `GET /api/health` reports DB connectivity (503 when down), and the layout shows a banner instead of crashing if the DB is unavailable.
-
-### Roles
-Auth is simulated, as the brief allows: a cookie records "Staff" or "Student X". It's **not** a security boundary for a real deployment. Authorisation is still enforced server-side on every API route and page (students get 403 on staff endpoints and can only read their own records), and replacing the toggle with real auth only touches `src/server/session.ts`.
+The full write-up, with diagrams of the request flow, refresh rotation and data model, is in **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**.
 
 ---
 
 ## API
 
-| Method | Route | Role | Purpose |
+All routes return JSON (or the standard error body). "Permission" is from the matrix in `src/domain/permissions.ts`.
+
+| Method | Route | Permission | Purpose |
 |---|---|---|---|
 | GET | `/api/health` | — | Liveness + DB check |
-| POST / DELETE | `/api/session` | — | Role toggle |
-| GET / POST | `/api/students` | Staff | Search/filter (`q`, `programmeId`, `status`, `academicYear`, `page`, `pageSize`) / enrol |
-| GET / PATCH | `/api/students/:id` | Staff | Profile with account / update details or status |
-| GET / POST | `/api/students/:id/fees` | Staff | Account / add a charge |
-| POST | `/api/students/:id/payments` | Staff | Record payment |
-| POST | `/api/payments/:id/void` | Staff | Void a payment with a reason |
-| GET | `/api/students/:id/results` | Staff | Full marksheet (incl. unpublished) |
-| POST | `/api/students/:id/results/publish` | Staff | Publish |
-| POST | `/api/students/:id/results/withhold` | Staff | Withhold `{ reason, shareReason }` |
-| GET / POST | `/api/assessments` | Any / Staff | Role-aware list / create |
-| GET / PATCH | `/api/assessments/:id` | Staff | Roster (on time / late / missing + marks) / edit deadline |
-| POST | `/api/assessments/:id/submissions` | Student | Upload (multipart `file`) |
-| GET | `/api/submissions/:id/file` | Staff or owner | Download |
-| PUT | `/api/grades` | Staff | Upsert a mark |
-| GET | `/api/me/results` · `/api/me/fees` · `/api/me/assessments` | Student | Own data only |
-| GET | `/api/dashboard` · `/api/programmes` · `/api/modules` | Staff | Dashboard / lookups |
+| POST | `/api/auth/login` · `/api/auth/logout` · `/api/auth/refresh` | — | Sign in (rate-limited) / out / rotate the refresh token |
+| POST | `/api/auth/activate` | — | Set a password from an activation link |
+| GET | `/api/auth/me` | signed in | Current user |
+| POST | `/api/auth/change-password` | signed in | Change password (signs out other sessions) |
+| GET / DELETE | `/api/auth/sessions` | signed in | List sessions / sign out the others |
+| GET / POST | `/api/students` | `students.read` / `students.write` | Search, filter, sort, page / enrol (returns the activation link once) |
+| GET / PATCH | `/api/students/:id` | `students.read` / `students.write` | Profile with account / update details or status |
+| POST | `/api/students/:id/activation-link` | `students.write` | Issue a new activation link |
+| GET / POST | `/api/students/:id/fees` | `finance.read` / `fees.write` | Account / add a charge |
+| POST | `/api/students/:id/payments` | `payments.write` | Record a payment |
+| POST | `/api/payments/:id/void` | `payments.void` | Void a payment with a reason |
+| GET | `/api/students/:id/results` | `results.read` | Full marksheet (incl. unpublished) |
+| POST | `/api/students/:id/results/publish` · `…/withhold` | `results.release` | Publish / withhold `{ reason, shareReason }` |
+| GET / POST | `/api/assessments` | `submissions.read` (staff) or student / `assessments.write` | Role-aware list / create |
+| GET / PATCH | `/api/assessments/:id` | `submissions.read` / `assessments.write` | Roster / edit deadline |
+| POST | `/api/assessments/:id/submissions` | student | Upload (multipart `file`) |
+| GET | `/api/submissions/:id/file` | `submissions.read` or owner | Download |
+| PUT | `/api/grades` | `grades.write` | Upsert a mark |
+| GET | `/api/me/assessments` · `/api/me/fees` · `/api/me/results` | student | Own data only |
+| GET | `/api/dashboard` · `/api/programmes` · `/api/modules` | `dashboard.read` / `students.read` | Dashboard / lookups |
 
 ---
 
 ## Testing
 
-**236 automated tests**, written test-first (red → green):
+**737 automated tests**, written test-first (red → green), plus CI on every push and pull request (lint, typecheck, unit + integration against Postgres, production build).
 
-- **Unit (120)** — domain rules at every boundary (classification edges, FIFO overdue allocation, money parsing without float drift, submission rule table, file magic bytes), validation schemas, error mapping, formatting, API client, page-access rules.
-- **Integration (96)** — services and **real API route handlers** against a real Postgres database: concurrent ID generation, rollback without wasting an ID, duplicate references, void races, resubmission and file replacement on disk, path traversal, authorisation (401/403 on every protected route), withheld results never leaking, seed coverage.
-- **E2E smoke (20)** — a running production build: role redirects, every page rendering, seeded edge cases visible, real 404 statuses.
+| Suite | Count | What it covers |
+|---|---|---|
+| **Unit** (`npm run test:unit`) | 445 | Domain rules at every boundary (classification edges, FIFO overdue, money without float drift, submission rules, file magic bytes), schemas, JWT / password / token primitives, API client refresh-and-retry, UI logic (navigation per role, breadcrumbs, table URL state, tabs, countdowns, fees statement, uploads, form-error mapping, the form hook in jsdom), and a guard that no v1 styling is left in any source file |
+| **Integration** (`npm run test:integration`) | 259 | Real route handlers against a real Postgres DB: login, lockout, refresh rotation and reuse detection, activation, demo-account protection, **the permission matrix over every route and role**, concurrent ID generation, void races, file storage, withheld results never leaking, seed coverage |
+| **E2E** (`npm run test:e2e`) | 24 | A running server over HTTP: real sign-in per role, redirects, every page rendering, seeded edge cases, real 404 statuses |
+| **Browser** (`npm run test:browser`) | 9 | Playwright in Chromium: one-click demo sign-in per role, every sidebar page with **zero console errors**, student record tabs, mobile sidebar, dark mode, role redirects |
 
 ---
 
@@ -235,16 +236,24 @@ I used **Claude Code** (Anthropic's CLI agent, Claude Opus) as a pair programmer
 - Wrong Prisma event types on log listeners; unit tests writing into the real app log; editor/CLI TypeScript version mismatch. All caught by `tsc`/review and fixed.
 - Prisma's safety guard blocked the agent from running `migrate reset`. Instead of bypassing it, the test setup was changed to the non-destructive `migrate deploy` + per-test `TRUNCATE`.
 
-**What I decided myself:** the scope, every product rule in the section above, the TDD workflow, keeping tests outside `src/`, and choosing a correct HTTP status over a loading skeleton.
+**v2 (auth, roles, redesign).** I wrote a design spec with the agent (`docs/superpowers/specs/`), approved it, then had it break each phase into a step-by-step plan (`docs/superpowers/plans/`) and execute it test-first, task by task. I reviewed each task in the browser and in git before it moved on. Mistakes caught along the way:
+- The shadcn CLI pulled in an unrelated npm package called `cn` when its config was incomplete. It was spotted in the diff, removed, and replaced with the standard helper.
+- The new enrol form sent the date of birth as a full timestamp, which the API (rightly) rejected. A hook test reproducing it was written first, then the form kit was fixed to submit exactly what the user typed.
+- Shared demo accounts let one reviewer sign out every other reviewer and see their IP addresses. It was fixed on the server with tests.
+- The table library's new major version had a different API. It was pinned to the stable version instead of working around it.
+- A browser test that passed first time was deliberately broken to prove it could fail.
+
+**What I decided myself:** the scope, every product rule in the section above, the four roles and who may do what, real auth over a toggle, the TDD workflow, keeping tests outside `src/`, and choosing a correct HTTP status over a loading skeleton.
 
 ---
 
 ## Known limitations & next steps
 
-- **Real authentication** (SSO / NextAuth) and finer staff roles (Finance vs Academic).
-- Cloud file storage (S3) plus virus scanning of uploads; files are currently on local disk.
+- **No email delivery.** Activation links are copied by staff; reminders and "results published" would be notifications or emails.
+- **SSO** (Microsoft / Google) as an alternative to passwords.
+- **Cloud file storage** (S3) and virus scanning of uploads. Files are currently on local disk, so hosting needs a persistent volume.
 - Fee instalment plans, refunds of credit, and payment-provider integration.
 - Extenuating circumstances / individual deadline extensions per student.
 - Module- and programme-level progression rules (credits, weighted averages, resits).
-- Email notifications (overdue reminders, results published).
+- Planned next in v2: ⌘K search, dashboard charts, notifications, printable receipts, CSV export, bulk results release, audit-log and user-management pages.
 - `npm audit` reports one high-severity advisory in `deepmerge-ts`, a dependency of the **Prisma CLI** (dev tooling only, not shipped at runtime). The fix requires Prisma 7.
