@@ -1,53 +1,77 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Copy, KeyRound, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
-import { FormError, useAction } from "@/components/forms";
 import { formatDateTime } from "@/lib/format";
+import { notifyError, notifySuccess } from "@/components/feedback";
+import { ToneBadge } from "@/components/common";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-type Status = "ACTIVE" | "PENDING" | "DISABLED" | "NONE";
+export type PortalStatus = "ACTIVE" | "PENDING" | "DISABLED" | "NONE";
+
+export function PortalAccountBadge({ status }: { status: PortalStatus }) {
+  if (status === "ACTIVE") return <ToneBadge tone="green">Account active</ToneBadge>;
+  if (status === "PENDING") return <ToneBadge tone="amber">Invitation pending</ToneBadge>;
+  if (status === "DISABLED") return <ToneBadge tone="red">Account disabled</ToneBadge>;
+  return <ToneBadge>No portal account</ToneBadge>;
+}
 
 /** Shows whether the student can sign in, and lets staff issue a fresh activation link. */
-export function PortalAccount({ studentId, status, lastLoginAt, canManage }: { studentId: string; status: Status; lastLoginAt: string | null; canManage: boolean }) {
+export function PortalAccount({ studentId, status, lastLoginAt, canManage }: { studentId: string; status: PortalStatus; lastLoginAt: string | null; canManage: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const action = useAction(() => apiFetch<{ url: string }>(`/api/students/${studentId}/activation-link`, { method: "POST" }), {
-    refresh: false,
-    onSuccess: (r) => setUrl(r.url),
-  });
+  const [pending, setPending] = useState(false);
+
+  async function issue() {
+    setPending(true);
+    try {
+      setUrl((await apiFetch<{ url: string }>(`/api/students/${studentId}/activation-link`, { method: "POST" })).url);
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url ?? "");
+      setCopied(true);
+      notifySuccess("Link copied");
+    } catch {
+      /* clipboard blocked: the field stays selectable */
+    }
+  }
 
   return (
-    <div className="space-y-2 text-sm">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Student portal account</div>
-      {status === "ACTIVE" && <p className="text-emerald-700">Active{lastLoginAt ? ` · last sign-in ${formatDateTime(lastLoginAt)}` : ""}</p>}
-      {status === "DISABLED" && <p className="text-rose-700">Disabled — the student cannot sign in.</p>}
-      {status === "NONE" && <p className="text-slate-500">No account.</p>}
+    <div className="grid gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Student portal</span>
+        <PortalAccountBadge status={status} />
+      </div>
+      {status === "ACTIVE" && <p className="text-muted-foreground">{lastLoginAt ? `Last sign-in ${formatDateTime(lastLoginAt)}` : "Hasn't signed in yet."}</p>}
+      {status === "DISABLED" && <p className="text-muted-foreground">The student cannot sign in.</p>}
       {status === "PENDING" && (
         <>
-          <p className="text-amber-700">Invitation pending — the student hasn&apos;t set a password yet.</p>
+          <p className="text-muted-foreground">The student hasn&apos;t set a password yet.</p>
           {canManage && !url && (
-            <button className="btn btn-secondary btn-sm" disabled={action.pending} onClick={() => action.run()}>
-              {action.pending ? "Generating…" : "Generate activation link"}
-            </button>
-          )}
-          {url && (
-            <div className="space-y-1">
-              <div className="flex gap-2">
-                <input readOnly value={url} className="input py-1 font-mono text-xs" aria-label="Activation link" onFocus={(e) => e.currentTarget.select()} />
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={async () => {
-                    await navigator.clipboard?.writeText(url);
-                    setCopied(true);
-                  }}
-                >
-                  {copied ? "Copied" : "Copy"}
-                </button>
-              </div>
-              <p className="text-xs text-slate-500">Valid for 72 hours, single use. Any earlier link no longer works.</p>
+            <div>
+              <Button variant="outline" size="sm" onClick={issue} disabled={pending}>
+                {pending ? <Loader2 className="animate-spin" /> : <KeyRound />} Generate activation link
+              </Button>
             </div>
           )}
-          <FormError state={action} />
+          {url && (
+            <div className="grid gap-1.5">
+              <div className="flex gap-2">
+                <Input readOnly value={url} className="h-8 font-mono text-xs" aria-label="Activation link" onFocus={(e) => e.currentTarget.select()} />
+                <Button variant="outline" size="sm" onClick={copy} aria-label="Copy activation link">{copied ? <Check /> : <Copy />}</Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Valid for 72 hours, single use. Any earlier link no longer works.</p>
+            </div>
+          )}
         </>
       )}
     </div>
