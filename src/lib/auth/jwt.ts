@@ -5,7 +5,11 @@
  * Access tokens are short-lived (15 min) and stateless; the long-lived,
  * revocable part of a session is the refresh token (src/server/services/auth.ts).
  */
-import { SignJWT, errors, jwtVerify } from "jose";
+// Subpath imports: pull in only JWS sign/verify, not jose's JWE code (which the
+// Edge build flags for CompressionStream) — smaller middleware bundle too.
+import { SignJWT } from "jose/jwt/sign";
+import { jwtVerify } from "jose/jwt/verify";
+import { JWTExpired } from "jose/errors";
 import { ROLES, type Role } from "@/domain/permissions";
 
 export const ACCESS_TTL_SECONDS = 900;
@@ -60,7 +64,7 @@ export async function verifyAccessToken(token: string, now = new Date()): Promis
     // `algorithms` pins HS256: alg:none and algorithm-confusion tokens are rejected.
     ({ payload } = await jwtVerify(token, jwtSecret(), { issuer: ISSUER, audience: AUDIENCE, algorithms: ["HS256"], currentDate: now }));
   } catch (err) {
-    throw new TokenError(err instanceof errors.JWTExpired ? "expired" : "invalid", { cause: err });
+    throw new TokenError(err instanceof JWTExpired ? "expired" : "invalid", { cause: err });
   }
   const { sub, role, sid, studentId, demo } = payload as Record<string, unknown>;
   if (typeof sub !== "string" || typeof sid !== "string" || !ROLES.includes(role as Role)) throw new TokenError("invalid");

@@ -110,6 +110,16 @@ describe("/api/auth/refresh", () => {
 });
 
 describe("logout, me, sessions, password", () => {
+  it("login sets a readable session-hint cookie (no secret in it) and logout clears it", async () => {
+    const { res, cookie } = await signIn();
+    const hint = cookieNamed(res.setCookie, "sms_has_rt")!;
+    expect(hint).toMatch(/^sms_has_rt=1;/);
+    expect(hint).not.toMatch(/HttpOnly/i);
+    expect(hint).toMatch(/Path=\/(;|$)/);
+    const out = await call(logoutRoute.POST, { method: "POST", as: { cookie } });
+    expect(cookieNamed(out.setCookie, "sms_has_rt")).toMatch(/Max-Age=0/);
+  });
+
   it("logout clears cookies and kills the refresh token", async () => {
     const { cookie } = await signIn();
     const res = await call(logoutRoute.POST, { method: "POST", as: { cookie } });

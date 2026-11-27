@@ -3,8 +3,9 @@ import type { NextResponse } from "next/server";
 import { ACCESS_TTL_SECONDS } from "@/lib/auth/jwt";
 import { REFRESH_TTL_MS } from "../services/auth";
 
-export const ACCESS_COOKIE = "sms_at";
-export const REFRESH_COOKIE = "sms_rt";
+import { ACCESS_COOKIE, REFRESH_COOKIE, SESSION_HINT_COOKIE } from "@/lib/auth/cookie-names";
+
+export { ACCESS_COOKIE, REFRESH_COOKIE, SESSION_HINT_COOKIE };
 
 const secure = process.env.NODE_ENV === "production";
 
@@ -22,9 +23,11 @@ export function setAuthCookies(res: NextResponse, s: { accessToken: string; refr
     path: "/api/auth",
     maxAge: Math.floor(REFRESH_TTL_MS / 1000),
   });
+  res.cookies.set(SESSION_HINT_COOKIE, "1", { httpOnly: false, sameSite: "lax", secure, path: "/", maxAge: Math.floor(REFRESH_TTL_MS / 1000) });
 }
 
 export function clearAuthCookies(res: NextResponse) {
   res.cookies.set(ACCESS_COOKIE, "", { httpOnly: true, sameSite: "lax", secure, path: "/", maxAge: 0 });
   res.cookies.set(REFRESH_COOKIE, "", { httpOnly: true, sameSite: "strict", secure, path: "/api/auth", maxAge: 0 });
+  res.cookies.set(SESSION_HINT_COOKIE, "", { httpOnly: false, sameSite: "lax", secure, path: "/", maxAge: 0 });
 }
