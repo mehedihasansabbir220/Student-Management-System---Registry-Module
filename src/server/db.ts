@@ -15,10 +15,10 @@ function createClient() {
       { emit: "event", level: "query" },
     ],
   });
-  client.$on("warn", (e) => logger.warn("prisma warning", { prisma: e.message }));
-  client.$on("error", (e) => logger.error("prisma error", { prisma: e.message }));
+  client.$on("warn", (e: Prisma.LogEvent) => logger.warn("prisma warning", { prisma: e.message }));
+  client.$on("error", (e: Prisma.LogEvent) => logger.error("prisma error", { prisma: e.message }));
   if (process.env.LOG_SQL === "true") {
-    client.$on("query", (e) => logger.debug("sql", { query: e.query, durationMs: e.duration }));
+    client.$on("query", (e: Prisma.QueryEvent) => logger.debug("sql", { query: e.query, durationMs: e.duration }));
   }
   return client;
 }

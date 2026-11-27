@@ -15,7 +15,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
+          include: ["tests/unit/**/*.test.ts"],
           environment: "node",
         },
       },

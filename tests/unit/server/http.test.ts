@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { NextRequest } from "next/server";
-import { mapError, route } from "./http";
-import { BusinessRuleError, NotFoundError } from "./errors";
+import { mapError, route } from "@/server/http";
+import { BusinessRuleError, NotFoundError } from "@/server/errors";
 
 const prismaKnown = (code: string, meta?: Record<string, unknown>) =>
   new Prisma.PrismaClientKnownRequestError("boom", { code, clientVersion: "test", meta });

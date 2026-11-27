@@ -18,7 +18,19 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "uploads/**",
+      "logs/**",
+      ".test-uploads/**",
     ],
+  },
+  {
+    rules: {
+      // Underscore prefix marks an intentionally unused binding (e.g. omitting a key via destructuring).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", destructuredArrayIgnorePattern: "^_" },
+      ],
+    },
   },
 ];
 
