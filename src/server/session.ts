@@ -6,7 +6,7 @@ import { db } from "./db";
 import { ForbiddenError, TokenExpiredError, UnauthenticatedError } from "./errors";
 import { ACCESS_COOKIE } from "./auth/cookies";
 import { TokenError, verifyAccessToken } from "@/lib/auth/jwt";
-import { can, homeFor, isStaff, type Permission, type Role } from "@/domain/permissions";
+import { can, homeFor, type Permission, type Role } from "@/domain/permissions";
 
 /**
  * Who is making this request. The access JWT proves identity cheaply; we still
@@ -80,13 +80,6 @@ export async function requireStudent(req: NextRequest): Promise<CurrentUser & { 
     throw new ForbiddenError("This is only available to students");
   }
   return user as CurrentUser & { studentId: string; studentNumber: string };
-}
-
-/** TEMPORARY (plan Task 9 removes it): any staff role. Keeps v1 routes compiling during the migration. */
-export async function requireStaff(req: NextRequest): Promise<CurrentUser> {
-  const user = await requireUser(req);
-  if (!isStaff(user.role)) throw new ForbiddenError("Only staff can do this");
-  return user;
 }
 
 /** For Server Components / layouts. Expired or invalid → null (middleware handles the refresh). */

@@ -62,7 +62,7 @@ describe("authorisation", () => {
   });
 
   it("returns 403 when staff call a student-only endpoint", async () => {
-    const res = await call(myResults.GET, { as: "staff" });
+    const res = await call(myResults.GET, { as: "admin" });
     expect(res.status).toBe(403);
   });
 });

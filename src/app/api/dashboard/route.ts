@@ -1,8 +1,8 @@
 import { route } from "@/server/http";
-import { requireStaff } from "@/server/session";
+import { requirePermission } from "@/server/session";
 import { getDashboard } from "@/server/services/dashboard";
 
 export const GET = route(async (req) => {
-  await requireStaff(req);
+  await requirePermission(req, "dashboard.read");
   return getDashboard();
 });
