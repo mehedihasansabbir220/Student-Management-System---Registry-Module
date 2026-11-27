@@ -41,8 +41,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const current = !user ? "" : user.role === "STAFF" ? "STAFF" : user.studentId;
 
   return (
-    <html lang="en-GB">
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen font-sans`}>
+    // suppressHydrationWarning: browser extensions (e.g. Grammarly) inject attributes into <html>/<body>
+    // before React hydrates. This only silences attribute diffs on these two elements, not their children.
+    <html lang="en-GB" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen font-sans`} suppressHydrationWarning>
         <header className="bg-indigo-900 text-white shadow">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex items-center gap-6">
