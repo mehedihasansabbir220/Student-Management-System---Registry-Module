@@ -200,6 +200,31 @@ export const withholdResultsSchema = z.object({
 });
 export type WithholdResultsInput = z.infer<typeof withholdResultsSchema>;
 
+// ---------- authentication ---------------------------------------------------
+
+export const PASSWORD_MIN = 10;
+
+export const passwordSchema = z
+  .string({ error: "Password is required" })
+  .min(PASSWORD_MIN, `Use at least ${PASSWORD_MIN} characters`)
+  .max(200, "Password is too long");
+
+export const loginSchema = z.object({
+  email: z.string({ error: "Email is required" }).trim().toLowerCase().pipe(z.email("Enter a valid email address")),
+  // No policy check on login: never tell an attacker which rule a password fails.
+  password: z.string({ error: "Password is required" }).min(1, "Password is required").max(200),
+});
+
+export const activateSchema = z.object({
+  token: z.string({ error: "Activation link is invalid" }).trim().min(1, "Activation link is invalid"),
+  password: passwordSchema,
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string({ error: "Enter your current password" }).min(1, "Enter your current password"),
+  newPassword: passwordSchema,
+});
+
 // ---------- session ----------------------------------------------------------
 
 export const sessionSchema = z.discriminatedUnion("role", [

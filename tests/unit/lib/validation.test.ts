@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  activateSchema,
+  changePasswordSchema,
+  loginSchema,
+  passwordSchema,
   createAssessmentSchema,
   createStudentSchema,
   gradeSchema,
@@ -151,5 +155,26 @@ describe("studentListQuerySchema", () => {
 
   it("rejects an unknown status", () => {
     expect(studentListQuerySchema.safeParse({ status: "NOPE" }).success).toBe(false);
+  });
+});
+
+describe("auth schemas", () => {
+  it("normalises the login email", () => {
+    expect(loginSchema.parse({ email: "  Admin@Demo.SMS ", password: "x" }).email).toBe("admin@demo.sms");
+  });
+
+  it("rejects short passwords", () => {
+    expect(passwordSchema.safeParse("short").success).toBe(false);
+    expect(passwordSchema.safeParse("long-enough-1").success).toBe(true);
+  });
+
+  it("requires a token and a valid new password to activate", () => {
+    expect(activateSchema.safeParse({ token: "", password: "long-enough-1" }).success).toBe(false);
+    expect(activateSchema.safeParse({ token: "t", password: "short" }).success).toBe(false);
+  });
+
+  it("requires the current and a valid new password to change password", () => {
+    expect(changePasswordSchema.safeParse({ currentPassword: "a", newPassword: "long-enough-1" }).success).toBe(true);
+    expect(changePasswordSchema.safeParse({ currentPassword: "", newPassword: "long-enough-1" }).success).toBe(false);
   });
 });
