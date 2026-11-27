@@ -8,6 +8,7 @@ import { rethrowUnique } from "../prisma-errors";
 import { formatStudentNumber, intakeYear } from "@/domain/student-number";
 import type { CreateStudentInput, StudentListQuery, UpdateStudentInput } from "@/lib/validation";
 import { accountFor, accountSelect } from "./accounts";
+import { createActivationToken } from "./auth";
 
 /** Fee due date policy: 30 days after enrolment (see doc/05). */
 export const FEE_DUE_DAYS = 30;
@@ -23,6 +24,7 @@ const addDaysUtc = (d: Date, days: number) =>
  *   3. snapshot the programme fee onto a Fee row
  *   4. create the (withheld) result release
  *   5. audit
+ *   6. create the student's portal account + activation token (returned as `activationToken`, shown once)
  * If anything fails, everything rolls back — including the sequence, so IDs are not burnt.
  */
 export async function createStudent(input: CreateStudentInput, actor: string, now = new Date()) {
@@ -60,6 +62,9 @@ export async function createStudent(input: CreateStudentInput, actor: string, no
         },
       });
       await tx.resultRelease.create({ data: { studentId: created.id } });
+      // 6. a student portal account (no password yet) + a single-use activation link
+      const user = await tx.user.create({ data: { role: "STUDENT", email: created.email, name: created.fullName, studentId: created.id } });
+      const activationToken = await createActivationToken(tx, user.id, now);
       await audit(tx, {
         actor,
         action: "student.created",
@@ -68,7 +73,7 @@ export async function createStudent(input: CreateStudentInput, actor: string, no
         studentId: created.id,
         details: { studentNumber: created.studentNumber, programme: programme.code, feeAmount: programme.feeAmount.toString() },
       });
-      return created;
+      return { ...created, activationToken };
     });
     logger.info("student enrolled", { studentId: student.id, studentNumber: student.studentNumber });
     return student;
@@ -133,6 +138,13 @@ export async function updateStudent(id: string, input: UpdateStudentInput, actor
   try {
     return await db.$transaction(async (tx) => {
       const updated = await tx.student.update({ where: { id }, data: input });
+      // The portal account mirrors the record, so a student signs in with their current email.
+      if (input.email !== undefined || input.fullName !== undefined) {
+        await tx.user.updateMany({
+          where: { studentId: id },
+          data: { ...(input.email !== undefined && { email: input.email }), ...(input.fullName !== undefined && { name: input.fullName }) },
+        });
+      }
 
       const changed = (Object.keys(input) as (keyof UpdateStudentInput)[]).filter(
         (k) => input[k] !== undefined && String(existing[k]) !== String(updated[k]),

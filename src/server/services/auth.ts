@@ -1,8 +1,9 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { User } from "@prisma/client";
-import { db } from "../db";
-import { RateLimitedError, UnauthenticatedError } from "../errors";
+import { db, type Tx } from "../db";
+import { audit } from "../audit";
+import { BusinessRuleError, NotFoundError, RateLimitedError, UnauthenticatedError, ValidationError } from "../errors";
 import { logger } from "../logger";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { generateOpaqueToken, hashToken } from "../auth/tokens";
@@ -23,6 +24,7 @@ export const REFRESH_TTL_MS = 7 * 86_400_000;
 export const LOCKOUT_THRESHOLD = 5;
 export const LOCKOUT_MS = 15 * 60_000;
 export const REFRESH_REUSE_GRACE_MS = 10_000;
+export const ACTIVATION_TTL_MS = 72 * 3_600_000;
 
 const GENERIC_LOGIN_ERROR = "Email or password is incorrect";
 const LOCKED_MESSAGE = "Too many failed attempts. Try again in 15 minutes.";
@@ -171,4 +173,77 @@ export async function revokeOtherSessions(userId: string, currentFamilyId: strin
     data: { revokedAt: new Date() },
   });
   return families.length;
+}
+
+// ---------------------------------------------------------------------------
+// Account activation & password management
+// ---------------------------------------------------------------------------
+
+const samePasswordAsEmail = (password: string, email: string) => password.trim().toLowerCase() === email.toLowerCase();
+
+/** Creates a single-use activation token inside the caller's transaction. Returns the raw token (shown once). */
+export async function createActivationToken(tx: Tx, userId: string, now = new Date()): Promise<string> {
+  const raw = generateOpaqueToken();
+  await tx.activationToken.create({ data: { userId, tokenHash: hashToken(raw), expiresAt: new Date(now.getTime() + ACTIVATION_TTL_MS) } });
+  return raw;
+}
+
+export async function activate(input: { token: string; password: string }, meta: AuthMeta = {}): Promise<IssuedSession> {
+  const now = meta.now ?? new Date();
+  const row = await db.activationToken.findUnique({ where: { tokenHash: hashToken(input.token) }, include: { user: true } });
+  if (!row) throw new BusinessRuleError("This activation link is not valid. Ask the Registry for a new one.");
+  if (row.usedAt) throw new BusinessRuleError("This activation link has already been used. Sign in instead.");
+  if (row.expiresAt <= now) throw new BusinessRuleError("This activation link has expired. Ask the Registry for a new one.");
+  if (samePasswordAsEmail(input.password, row.user.email)) {
+    throw new ValidationError("Choose a different password", { password: "Your password can't be your email address" });
+  }
+
+  const passwordHash = await hashPassword(input.password);
+  const user = await db.$transaction(async (tx) => {
+    // Atomic claim: two simultaneous submissions of the same link can't both succeed.
+    const claimed = await tx.activationToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: now } });
+    if (claimed.count === 0) throw new BusinessRuleError("This activation link has already been used. Sign in instead.");
+    const u = await tx.user.update({ where: { id: row.userId }, data: { passwordHash, failedLoginCount: 0, lockedUntil: null, lastLoginAt: now } });
+    await audit(tx, { actor: `user:${u.email}`, action: "account.activated", entityType: "User", entityId: u.id, studentId: u.studentId });
+    return u;
+  });
+  return (await issue(user, randomUUID(), meta, now)).session;
+}
+
+export async function changePassword(
+  userId: string,
+  input: { currentPassword: string; newPassword: string },
+  currentFamilyId: string,
+): Promise<{ revokedSessions: number }> {
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user || !user.passwordHash) throw new NotFoundError("Account");
+  if (user.isDemo) throw new BusinessRuleError("Password changes are disabled on shared demo accounts");
+  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+    throw new ValidationError("Your current password is incorrect", { currentPassword: "Current password is incorrect" });
+  }
+  if (samePasswordAsEmail(input.newPassword, user.email)) {
+    throw new ValidationError("Choose a different password", { newPassword: "Your password can't be your email address" });
+  }
+
+  const passwordHash = await hashPassword(input.newPassword);
+  await db.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    await audit(tx, { actor: `user:${user.email}`, action: "account.password_changed", entityType: "User", entityId: userId, studentId: user.studentId });
+  });
+  // A password change is the moment to kick out anyone else who may have the old one.
+  const revokedSessions = await revokeOtherSessions(userId, currentFamilyId);
+  return { revokedSessions };
+}
+
+/** Staff action: a new activation link for a student whose invitation was lost or expired. */
+export async function issueActivationLink(studentId: string, actor: string): Promise<string> {
+  const user = await db.user.findUnique({ where: { studentId } });
+  if (!user) throw new NotFoundError("Student account");
+  if (user.passwordHash) throw new BusinessRuleError("This student has already activated their account");
+  return db.$transaction(async (tx) => {
+    await tx.activationToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+    const raw = await createActivationToken(tx, user.id);
+    await audit(tx, { actor, action: "account.activation_issued", entityType: "User", entityId: user.id, studentId });
+    return raw;
+  });
 }

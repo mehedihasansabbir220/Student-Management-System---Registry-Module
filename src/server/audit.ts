@@ -16,7 +16,10 @@ export type AuditAction =
   | "grade.entered"
   | "grade.changed"
   | "results.published"
-  | "results.withheld";
+  | "results.withheld"
+  | "account.activated"
+  | "account.password_changed"
+  | "account.activation_issued";
 
 /**
  * Write an audit entry inside the same transaction as the change it describes,
