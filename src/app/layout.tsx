@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import "./globals.css";
 import { RoleSwitcher } from "@/components/role-switcher";
 import { NavLink } from "@/components/nav-link";
@@ -10,6 +11,9 @@ import { logger } from "@/server/logger";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+
+// Every page depends on the session cookie, so nothing is statically prerendered.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: { default: "Registry · Student Management System", template: "%s · Registry" },
@@ -24,6 +28,8 @@ async function loadHeader() {
     ]);
     return { user, students, dbDown: false };
   } catch (err) {
+    // Never swallow Next.js control-flow signals (redirect, notFound, dynamic usage).
+    unstable_rethrow(err);
     // Keep the shell rendering even if the DB is down; pages show their own error.
     logger.error("layout: failed to load header data", { err });
     return { user: null, students: [], dbDown: true };
