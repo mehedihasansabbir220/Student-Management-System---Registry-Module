@@ -67,7 +67,8 @@ describe("access control (middleware + server guards)", () => {
 
   it("the login page offers demo accounts", async () => {
     const html = await (await get("/login")).text();
-    expect(html).toContain("Demo accounts");
+    // One-click sign-in for each seeded role (DEMO_MODE).
+    for (const role of ["Registry Admin", "Finance Officer", "Academic Staff", "Student"]) expect(html).toContain(`Sign in as ${role}`);
   });
 
   it("Finance sees the overdue dashboard but not the results-release area", async () => {
@@ -98,13 +99,19 @@ describe("staff pages render", () => {
     ["/staff/students", "Students"],
     ["/staff/students?status=WITHDRAWN", "Hannah Lee"],
     ["/staff/students?q=okafor", "Daniel Okafor"],
-    ["/staff/students/new", "Enrol a student"],
     ["/staff/assessments", "Programming Portfolio"],
     ["/staff/results", "Results release"],
   ])("%s", async (path, text) => {
     const res = await get(path, staff);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain(text);
+  });
+
+  it("the old enrol URL opens the enrol sheet on the students list", async () => {
+    const res = await get("/staff/students/new", staff);
+    expect(res.status).toBe(307);
+    const to = new URL(res.headers.get("location")!, BASE);
+    expect(`${to.pathname}${to.search}`).toBe("/staff/students?enrol=1");
   });
 
   it("dashboard flags the overdue students from the seed", async () => {

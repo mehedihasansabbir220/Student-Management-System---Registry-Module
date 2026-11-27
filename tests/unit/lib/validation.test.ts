@@ -146,7 +146,7 @@ describe("withholdResultsSchema", () => {
 
 describe("studentListQuerySchema", () => {
   it("treats empty strings from the URL as 'no filter'", () => {
-    expect(studentListQuerySchema.parse({ q: "", status: "", programmeId: "" })).toEqual({ page: 1, pageSize: 20 });
+    expect(studentListQuerySchema.parse({ q: "", status: "", programmeId: "", sort: "" })).toEqual({ page: 1, pageSize: 20, sort: "name" });
   });
 
   it("coerces page and clamps pageSize", () => {
@@ -155,6 +155,15 @@ describe("studentListQuerySchema", () => {
 
   it("rejects an unknown status", () => {
     expect(studentListQuerySchema.safeParse({ status: "NOPE" }).success).toBe(false);
+  });
+
+  it("accepts a known sort and defaults to name", () => {
+    expect(studentListQuerySchema.parse({ sort: "-year" }).sort).toBe("-year");
+    expect(studentListQuerySchema.parse({}).sort).toBe("name");
+  });
+
+  it("rejects an unknown sort so the page can fall back with a notice", () => {
+    expect(studentListQuerySchema.safeParse({ sort: "bogus" }).success).toBe(false);
   });
 });
 

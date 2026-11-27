@@ -6,7 +6,7 @@ import { NotFoundError, ValidationError } from "../errors";
 import { logger } from "../logger";
 import { rethrowUnique } from "../prisma-errors";
 import { formatStudentNumber, intakeYear } from "@/domain/student-number";
-import type { CreateStudentInput, StudentListQuery, UpdateStudentInput } from "@/lib/validation";
+import type { CreateStudentInput, StudentListQuery, StudentSort, UpdateStudentInput } from "@/lib/validation";
 import { accountFor, accountSelect } from "./accounts";
 import { createActivationToken } from "./auth";
 
@@ -82,6 +82,16 @@ export async function createStudent(input: CreateStudentInput, actor: string, no
   }
 }
 
+const SORT_FIELD = { name: "fullName", studentNumber: "studentNumber", year: "academicYear", enrolled: "createdAt" } as const;
+
+/** Stable ordering: the chosen column, then Student ID (unique) as the tiebreaker. */
+function studentOrderBy(sort: StudentSort): Prisma.StudentOrderByWithRelationInput[] {
+  const desc = sort.startsWith("-");
+  const field = SORT_FIELD[(desc ? sort.slice(1) : sort) as keyof typeof SORT_FIELD];
+  const order = desc ? "desc" : "asc";
+  return field === "studentNumber" ? [{ studentNumber: order }] : [{ [field]: order }, { studentNumber: "asc" }];
+}
+
 export async function listStudents(query: StudentListQuery, today = new Date()) {
   const where: Prisma.StudentWhereInput = {
     programmeId: query.programmeId,
@@ -100,7 +110,7 @@ export async function listStudents(query: StudentListQuery, today = new Date()) 
     db.student.count({ where }),
     db.student.findMany({
       where,
-      orderBy: [{ fullName: "asc" }, { studentNumber: "asc" }],
+      orderBy: studentOrderBy(query.sort ?? "name"),
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
       include: { programme: { select: { id: true, code: true, name: true } }, ...accountSelect },

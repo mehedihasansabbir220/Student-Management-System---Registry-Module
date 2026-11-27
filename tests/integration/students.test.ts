@@ -114,6 +114,27 @@ describe("listStudents", () => {
     expect(r.items).toHaveLength(1);
   });
 
+  it("sorts by name descending", async () => {
+    await seed();
+    const r = await listStudents({ page: 1, pageSize: 20, sort: "-name" }, today);
+    expect(r.items.map((s) => s.fullName)).toEqual(["Grace Hopper", "Alan Turing", "Ada Lovelace"]);
+  });
+
+  it("sorts by Student ID descending", async () => {
+    await seed();
+    const r = await listStudents({ page: 1, pageSize: 20, sort: "-studentNumber" }, today);
+    const numbers = r.items.map((s) => s.studentNumber);
+    expect(numbers).toEqual([...numbers].sort().reverse());
+  });
+
+  it("returns an empty page past the end while still reporting the page count", async () => {
+    await seed();
+    const r = await listStudents({ page: 40, pageSize: 2 }, today);
+    expect(r.items).toEqual([]);
+    expect(r.total).toBe(3);
+    expect(r.pageCount).toBe(2);
+  });
+
   it("includes each student's balance and overdue flag", async () => {
     const { ada } = await seed();
     await db.fee.create({ data: { studentId: ada.id, description: "Tuition", amount: "1000.00", dueDate: new Date("2025-09-01"), academicYear: "2025/26" } });

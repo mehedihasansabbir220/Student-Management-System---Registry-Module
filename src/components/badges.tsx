@@ -1,4 +1,4 @@
-import { Badge } from "./ui";
+import { ToneBadge as Badge } from "./common";
 import { CLASSIFICATION_LABEL, type Classification } from "@/domain/grades";
 import type { AccountState } from "@/domain/fees";
 import type { AssessmentWindow } from "@/domain/submissions";
@@ -15,7 +15,7 @@ export function StatusBadge({ status }: { status: Status }) {
 export function AccountBadge({ state, daysOverdue, creditPence }: { state: AccountState; daysOverdue?: number; creditPence?: number }) {
   switch (state) {
     case "OVERDUE":
-      return <Badge tone="red">⚠ Overdue{daysOverdue ? ` · ${daysOverdue}d` : ""}</Badge>;
+      return <Badge tone="red">Overdue{daysOverdue ? ` · ${daysOverdue}d` : ""}</Badge>;
     case "OUTSTANDING":
       return <Badge tone="amber">Outstanding</Badge>;
     case "CREDIT":
