@@ -109,27 +109,6 @@
   }
 }
 
-/* ---- v1 styling: kept only until every page is rebuilt (phase 2, task 8 removes it) ---- */
-.input {
-  @apply block w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm outline-none transition
-    placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20
-    disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-rose-500 aria-[invalid=true]:ring-rose-500/20;
-}
-.btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium shadow-sm transition
-    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60;
-}
-.btn-primary { @apply bg-primary text-primary-foreground hover:bg-primary/90; }
-.btn-secondary { @apply border border-input bg-card text-foreground hover:bg-muted; }
-.btn-danger { @apply bg-rose-600 text-white hover:bg-rose-700; }
-.btn-sm { @apply px-2.5 py-1.5 text-xs; }
-.link { @apply font-medium text-primary hover:underline; }
-
-table.data { @apply w-full text-left text-sm; }
-table.data th { @apply border-b bg-muted/50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground; }
-table.data td { @apply border-b px-4 py-3 align-middle; }
-table.data tbody tr:hover { @apply bg-muted/40; }
-
 @media print {
   [data-print-hide],
   [data-slot="sidebar"],

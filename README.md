@@ -38,6 +38,7 @@ Open http://localhost:3000 and choose **Registry staff** or any student. Use the
 | `npm run db:seed` | Reset all data and reload the demo dataset (idempotent) |
 | `npm test` | Unit + integration tests (integration uses `TEST_DATABASE_URL`) |
 | `npm run test:e2e` | Smoke tests against a running server (`E2E_BASE_URL`, default `http://localhost:3000`) |
+| `npm run test:browser` | Playwright browser smoke for every role (builds and serves on :3100; needs `npm run db:seed` and `npx playwright install chromium` once) |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 
 ### Environment variables
