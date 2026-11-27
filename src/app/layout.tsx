@@ -3,12 +3,11 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import "./globals.css";
-import { RoleSwitcher } from "@/components/role-switcher";
 import { NavLink } from "@/components/nav-link";
-import { db } from "@/server/db";
+import { UserMenu } from "@/components/user-menu";
 import { getCurrentUser } from "@/server/session";
 import { logger } from "@/server/logger";
-import { ROLE_LABEL, isStaff } from "@/domain/permissions";
+import { ROLE_LABEL, can, type Permission } from "@/domain/permissions";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -21,25 +20,36 @@ export const metadata: Metadata = {
   description: "Student enrolment, fees, submissions and results for the Registry team.",
 };
 
-async function loadHeader() {
+/** Staff navigation: each item appears only for roles holding its permission. */
+const STAFF_NAV: { href: string; label: string; permission: Permission; exact?: boolean }[] = [
+  { href: "/staff", label: "Dashboard", permission: "dashboard.read", exact: true },
+  { href: "/staff/students", label: "Students", permission: "students.read" },
+  { href: "/staff/assessments", label: "Assessments", permission: "submissions.read" },
+  { href: "/staff/results", label: "Results", permission: "results.release" },
+];
+
+const STUDENT_NAV = [
+  { href: "/me", label: "Overview", exact: true },
+  { href: "/me/assessments", label: "Assessments" },
+  { href: "/me/fees", label: "Fees" },
+  { href: "/me/results", label: "Results" },
+];
+
+async function loadUser() {
   try {
-    const [user, students] = await Promise.all([
-      getCurrentUser(),
-      db.student.findMany({ orderBy: { fullName: "asc" }, select: { id: true, fullName: true, studentNumber: true } }),
-    ]);
-    return { user, students, dbDown: false };
+    return { user: await getCurrentUser(), dbDown: false };
   } catch (err) {
     // Never swallow Next.js control-flow signals (redirect, notFound, dynamic usage).
     unstable_rethrow(err);
     // Keep the shell rendering even if the DB is down; pages show their own error.
-    logger.error("layout: failed to load header data", { err });
-    return { user: null, students: [], dbDown: true };
+    logger.error("layout: failed to load current user", { err });
+    return { user: null, dbDown: true };
   }
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const { user, students, dbDown } = await loadHeader();
-  const current = !user ? "" : user.role !== "STUDENT" ? "STAFF" : (user.studentId ?? "");
+  const { user, dbDown } = await loadUser();
+  const nav = !user ? [] : user.role === "STUDENT" ? STUDENT_NAV : STAFF_NAV.filter((n) => can(user.role, n.permission));
 
   return (
     // suppressHydrationWarning: browser extensions (e.g. Grammarly) inject attributes into <html>/<body>
@@ -54,34 +64,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <span className="hidden sm:inline">Registry</span>
               </Link>
               <nav className="flex flex-wrap gap-1">
-                {user && isStaff(user.role) && (
-                  <>
-                    <NavLink href="/staff" exact>Dashboard</NavLink>
-                    <NavLink href="/staff/students">Students</NavLink>
-                    <NavLink href="/staff/assessments">Assessments</NavLink>
-                    <NavLink href="/staff/results">Results</NavLink>
-                  </>
-                )}
-                {user?.role === "STUDENT" && (
-                  <>
-                    <NavLink href="/me" exact>Overview</NavLink>
-                    <NavLink href="/me/assessments">Assessments</NavLink>
-                    <NavLink href="/me/fees">Fees</NavLink>
-                    <NavLink href="/me/results">Results</NavLink>
-                  </>
-                )}
+                {nav.map((n) => (
+                  <NavLink key={n.href} href={n.href} exact={n.exact}>
+                    {n.label}
+                  </NavLink>
+                ))}
               </nav>
             </div>
-            <RoleSwitcher current={current} students={students.map((s) => ({ id: s.id, label: `${s.fullName} (${s.studentNumber})` }))} />
+            {user && <UserMenu name={user.name} roleLabel={ROLE_LABEL[user.role]} isDemo={user.isDemo} />}
           </div>
-          {user && (
-            <div className="border-t border-white/10 bg-indigo-950/40 text-xs text-indigo-100">
-              <div className="mx-auto max-w-7xl px-4 py-1.5 sm:px-6">
-                {user.role !== "STUDENT" ? `Signed in as ${user.name} (${ROLE_LABEL[user.role]})` : `Student view — ${user.name} (${user.studentNumber})`}
-                <span className="ml-2 text-indigo-300">· Demo role toggle (no real authentication)</span>
-              </div>
-            </div>
-          )}
         </header>
         {dbDown && (
           <div className="bg-rose-600 px-4 py-2 text-center text-sm text-white">The database is currently unavailable. Some information may not load.</div>

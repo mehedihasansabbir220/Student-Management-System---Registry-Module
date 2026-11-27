@@ -125,10 +125,17 @@ export async function getStudent(id: string, today = new Date()) {
       payments: { orderBy: [{ paidOn: "desc" }, { recordedAt: "desc" }] },
       resultRelease: true,
       auditLogs: { orderBy: { createdAt: "desc" }, take: 50 },
+      // Select only what staff need to see — never the password hash.
+      user: { select: { isActive: true, lastLoginAt: true, passwordHash: true } },
     },
   });
   if (!student) throw new NotFoundError("Student");
-  return { ...student, account: accountFor(student.fees, student.payments, today) };
+  const { user, ...rest } = student;
+  const portalAccount = {
+    status: !user ? ("NONE" as const) : !user.isActive ? ("DISABLED" as const) : user.passwordHash ? ("ACTIVE" as const) : ("PENDING" as const),
+    lastLoginAt: user?.lastLoginAt ?? null,
+  };
+  return { ...rest, portalAccount, account: accountFor(student.fees, student.payments, today) };
 }
 
 export async function updateStudent(id: string, input: UpdateStudentInput, actor: string) {

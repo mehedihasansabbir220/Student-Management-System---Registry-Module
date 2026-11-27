@@ -11,12 +11,47 @@ type Programme = { id: string; label: string; fee: string };
 export function StudentForm({ programmes, defaultAcademicYear }: { programmes: Programme[]; defaultAcademicYear: string }) {
   const router = useRouter();
   const [programmeId, setProgrammeId] = useState("");
+  const [enrolled, setEnrolled] = useState<{ id: string; studentNumber: string; fullName: string; activationUrl: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const action = useAction(
-    (body: Record<string, FormDataEntryValue>) => apiFetch<{ id: string; studentNumber: string }>("/api/students", { method: "POST", json: body }),
-    { refresh: false, onSuccess: (s) => router.push(`/staff/students/${s.id}?created=${s.studentNumber}`) },
+    (body: Record<string, FormDataEntryValue>) =>
+      apiFetch<{ id: string; studentNumber: string; fullName: string; activationUrl: string }>("/api/students", { method: "POST", json: body }),
+    { refresh: false, onSuccess: setEnrolled },
   );
   const f = action.fields;
   const fee = programmes.find((p) => p.id === programmeId)?.fee;
+
+  // The activation link is shown exactly once, here — so show it before leaving the page.
+  if (enrolled) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+          <strong>{enrolled.fullName}</strong> is enrolled as <span className="font-mono">{enrolled.studentNumber}</span>. The programme fee has been assigned.
+        </div>
+        <div>
+          <label htmlFor="activation-url" className="mb-1 block text-sm font-medium text-slate-700">Student portal activation link</label>
+          <div className="flex gap-2">
+            <input id="activation-url" readOnly value={enrolled.activationUrl} className="input font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={async () => {
+                await navigator.clipboard?.writeText(enrolled.activationUrl);
+                setCopied(true);
+              }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Send this to the student so they can set a password. It works once and expires in 72 hours. You can generate a new one from their record.</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn btn-secondary" onClick={() => { setEnrolled(null); setCopied(false); }}>Enrol another</button>
+          <button type="button" className="btn btn-primary" onClick={() => router.push(`/staff/students/${enrolled.id}`)}>Open student record</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form

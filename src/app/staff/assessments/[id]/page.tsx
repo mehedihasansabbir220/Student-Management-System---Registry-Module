@@ -9,6 +9,7 @@ import { assessmentWindow } from "@/domain/submissions";
 import { formatDateTime, relativeToNow } from "@/lib/format";
 import { GradeCell } from "./grade-cell";
 import { DeadlineEditor } from "./deadline-editor";
+import { requirePagePermission } from "@/server/session";
 
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }> };
@@ -30,6 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function AssessmentPage({ params }: Props) {
+  await requirePagePermission("submissions.read");
   const { assessment, rows, counts } = await load((await params).id);
   const now = new Date();
 

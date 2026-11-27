@@ -11,5 +11,9 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   const user = await requirePermission(req, "students.write");
   const input = await parseJson(req, createStudentSchema);
-  return created(await createStudent(input, user.actor));
+  const { activationToken, ...student } = await createStudent(input, user.actor);
+  // Shown once to staff so they can pass it to the student (no email system — design §5.6).
+  const activationUrl = new URL("/activate", req.nextUrl.origin);
+  activationUrl.searchParams.set("token", activationToken);
+  return created({ ...student, activationUrl: activationUrl.toString() });
 });

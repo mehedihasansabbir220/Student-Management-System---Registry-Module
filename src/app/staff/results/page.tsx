@@ -7,11 +7,13 @@ import { Badge } from "@/components/ui";
 import { ReleaseBadge, StatusBadge } from "@/components/badges";
 import { formatDateTime } from "@/lib/format";
 import { ReleaseControls } from "../students/[id]/release-controls";
+import { requirePagePermission } from "@/server/session";
 
 export const metadata: Metadata = { title: "Results release" };
 export const dynamic = "force-dynamic";
 
 export default async function ResultsPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
+  await requirePagePermission("results.release");
   const { filter } = await searchParams;
   const [all, overdue] = await Promise.all([listReleaseOverview(), listOverdueStudents()]);
   const overdueIds = new Set(overdue.map((o) => o.id));

@@ -75,6 +75,13 @@ describe("students API", () => {
     expect(res.data.studentNumber).toBe("SMS-2025-0001");
   });
 
+  it("returns a copyable activation link for the new student's account, not the raw token", async () => {
+    const p = await makeProgramme();
+    const res = await call(students.POST, { method: "POST", json: studentBody(p.id) });
+    expect(res.data.activationUrl).toMatch(/^http:\/\/localhost\/activate\?token=[A-Za-z0-9_-]{43}$/);
+    expect(res.data).not.toHaveProperty("activationToken");
+  });
+
   it("returns 400 with field errors for invalid input", async () => {
     const p = await makeProgramme();
     const res = await call(students.POST, { method: "POST", json: studentBody(p.id, { email: "bad", dateOfBirth: "2099-01-01" }) });

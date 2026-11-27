@@ -6,11 +6,14 @@ import { WindowBadge } from "@/components/badges";
 import { assessmentWindow } from "@/domain/submissions";
 import { formatDateTime, relativeToNow } from "@/lib/format";
 import { CreateAssessmentForm } from "./create-assessment-form";
+import { requirePagePermission } from "@/server/session";
+import { can } from "@/domain/permissions";
 
 export const metadata: Metadata = { title: "Assessments" };
 export const dynamic = "force-dynamic";
 
 export default async function AssessmentsPage() {
+  const viewer = await requirePagePermission("submissions.read");
   const [assessments, modules] = await Promise.all([listAssessmentsForStaff(), listModules()]);
   const now = new Date();
 
@@ -45,7 +48,7 @@ export default async function AssessmentsPage() {
           )}
         </Card>
         <Card title="New assessment">
-          <CreateAssessmentForm modules={modules.map((m) => ({ id: m.id, label: `${m.code} — ${m.title} (${m.programme.code})` }))} />
+          {can(viewer.role, "assessments.write") ? <CreateAssessmentForm modules={modules.map((m) => ({ id: m.id, label: `${m.code} — ${m.title} (${m.programme.code})` }))} /> : <p className="text-sm text-slate-500">Only academic staff and the Registry can create assessments.</p>}
         </Card>
       </div>
     </>

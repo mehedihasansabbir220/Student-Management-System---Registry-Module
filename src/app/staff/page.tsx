@@ -5,13 +5,20 @@ import { Card, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { AccountBadge, StatusBadge } from "@/components/badges";
 import { formatGBP } from "@/domain/money";
 import { formatDate, formatDateTime, relativeToNow } from "@/lib/format";
+import { requirePagePermission } from "@/server/session";
+import { can } from "@/domain/permissions";
 
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
+  const viewer = await requirePagePermission("dashboard.read");
   const d = await getDashboard();
   const active = d.statusCounts.ENROLLED;
+  // Each widget is shown only to roles that may see its data (Phase 2 reorders the dashboard per role).
+  const showFinance = can(viewer.role, "finance.read");
+  const showCoursework = can(viewer.role, "submissions.read");
+  const showRelease = can(viewer.role, "results.release");
 
   return (
     <>
@@ -19,12 +26,14 @@ export default async function Dashboard() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat label="Enrolled students" value={active} hint={`${d.statusCounts.DEFERRED} deferred · ${d.statusCounts.WITHDRAWN} withdrawn · ${d.statusCounts.COMPLETED} completed`} href="/staff/students?status=ENROLLED" />
-        <Stat label="Overdue balances" value={d.overdue.length} tone={d.overdue.length ? "red" : "green"} hint={formatGBP(d.overdueTotalPence) + " overdue"} href="#overdue" />
-        <Stat label="Results awaiting release" value={d.awaitingRelease.length} tone={d.awaitingRelease.length ? "amber" : undefined} hint="Graded but withheld" href="/staff/results?filter=awaiting" />
-        <Stat label="Outstanding fees" value={formatGBP(d.finance.outstandingPence)} hint={`${formatGBP(d.finance.collectedPence)} collected of ${formatGBP(d.finance.billedPence)}`} />
+        {showFinance && <Stat label="Overdue balances" value={d.overdue.length} tone={d.overdue.length ? "red" : "green"} hint={formatGBP(d.overdueTotalPence) + " overdue"} href="#overdue" />}
+        {showRelease && <Stat label="Results awaiting release" value={d.awaitingRelease.length} tone={d.awaitingRelease.length ? "amber" : undefined} hint="Graded but withheld" href="/staff/results?filter=awaiting" />}
+        {showFinance && <Stat label="Outstanding fees" value={formatGBP(d.finance.outstandingPence)} hint={`${formatGBP(d.finance.collectedPence)} collected of ${formatGBP(d.finance.billedPence)}`} />}
+        {showCoursework && <Stat label="Deadlines this week" value={d.upcomingDeadlines.length} hint={`${d.lateSubmissions.length} recent late submissions`} />}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        {showFinance && (
         <Card title={<span id="overdue">⚠ Overdue balances</span>} className="lg:col-span-2" padded={false}>
           {d.overdue.length === 0 ? (
             <div className="p-5"><EmptyState title="No overdue balances">Every student is up to date with their payments.</EmptyState></div>
@@ -53,7 +62,9 @@ export default async function Dashboard() {
             </div>
           )}
         </Card>
+        )}
 
+        {showCoursework && (
         <Card title="Deadlines in the next 7 days" padded={false}>
           {d.upcomingDeadlines.length === 0 ? (
             <div className="p-5"><EmptyState title="No deadlines this week" /></div>
@@ -73,7 +84,9 @@ export default async function Dashboard() {
             </ul>
           )}
         </Card>
+        )}
 
+        {showCoursework && (
         <Card title="Recent late submissions" className="lg:col-span-2" padded={false}>
           {d.lateSubmissions.length === 0 ? (
             <div className="p-5"><EmptyState title="No late submissions" /></div>
@@ -93,7 +106,9 @@ export default async function Dashboard() {
             </table>
           )}
         </Card>
+        )}
 
+        {showRelease && (
         <Card title="Results awaiting release" padded={false}>
           {d.awaitingRelease.length === 0 ? (
             <div className="p-5"><EmptyState title="Nothing waiting" /></div>
@@ -110,9 +125,10 @@ export default async function Dashboard() {
             </ul>
           )}
         </Card>
+        )}
       </div>
 
-      {d.finance.creditPence > 0 && (
+      {showFinance && d.finance.creditPence > 0 && (
         <p className="mt-6 text-xs text-slate-500">
           <AccountBadge state="CREDIT" /> {formatGBP(d.finance.creditPence)} is held as credit from overpayments — consider refunding or carrying it forward.
         </p>

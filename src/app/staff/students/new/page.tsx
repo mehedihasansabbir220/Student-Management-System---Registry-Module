@@ -3,6 +3,7 @@ import { listProgrammes } from "@/server/services/students";
 import { Card, PageHeader } from "@/components/ui";
 import { formatGBP, toPence } from "@/domain/money";
 import { StudentForm } from "./student-form";
+import { requirePagePermission } from "@/server/session";
 
 export const metadata: Metadata = { title: "Enrol student" };
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ function currentAcademicYear(now = new Date()) {
 }
 
 export default async function NewStudentPage() {
+  await requirePagePermission("students.write");
   const programmes = await listProgrammes();
   return (
     <>

@@ -6,6 +6,8 @@ import { Card, EmptyState, Notice, PageHeader } from "@/components/ui";
 import { AccountBadge, StatusBadge } from "@/components/badges";
 import { formatGBP } from "@/domain/money";
 import { STATUS_LABEL } from "@/lib/format";
+import { requirePagePermission } from "@/server/session";
+import { can } from "@/domain/permissions";
 
 export const metadata: Metadata = { title: "Students" };
 export const dynamic = "force-dynamic";
@@ -13,6 +15,8 @@ export const dynamic = "force-dynamic";
 type Search = Record<string, string | string[] | undefined>;
 
 export default async function StudentsPage({ searchParams }: { searchParams: Promise<Search> }) {
+  const viewer = await requirePagePermission("students.read");
+  const showFinance = can(viewer.role, "finance.read");
   const raw = Object.fromEntries(Object.entries(await searchParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
   const parsed = studentListQuerySchema.safeParse(raw);
   // Bad query string (e.g. hand-edited URL) → fall back to defaults with a notice, never a 500.
@@ -30,7 +34,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Students"
         subtitle={`${result.total} student${result.total === 1 ? "" : "s"}${hasFilters ? " match your filters" : " on record"}`}
-        actions={<Link href="/staff/students/new" className="btn btn-primary">+ Enrol student</Link>}
+        actions={can(viewer.role, "students.write") ? <Link href="/staff/students/new" className="btn btn-primary">+ Enrol student</Link> : undefined}
       />
 
       {!parsed.success && <div className="mb-4"><Notice>Some filters in the link were invalid and have been ignored.</Notice></div>}
@@ -62,7 +66,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
           <div className="overflow-x-auto">
             <table className="data">
               <thead>
-                <tr><th>Student ID</th><th>Name</th><th>Programme</th><th>Year</th><th>Status</th><th className="text-right">Balance</th><th>Fees</th></tr>
+                <tr><th>Student ID</th><th>Name</th><th>Programme</th><th>Year</th><th>Status</th>{showFinance && <><th className="text-right">Balance</th><th>Fees</th></>}</tr>
               </thead>
               <tbody>
                 {result.items.map((s) => (
@@ -75,8 +79,12 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
                     <td className="text-slate-600" title={s.programme.name}>{s.programme.code}</td>
                     <td className="text-slate-600">{s.academicYear}</td>
                     <td><StatusBadge status={s.status} /></td>
-                    <td className={`text-right tabular-nums ${s.account.isOverdue ? "font-semibold text-rose-600" : ""}`}>{formatGBP(s.account.balancePence)}</td>
-                    <td><AccountBadge state={s.account.state} daysOverdue={s.account.daysOverdue} creditPence={s.account.creditPence} /></td>
+                    {showFinance && (
+                      <>
+                        <td className={`text-right tabular-nums ${s.account.isOverdue ? "font-semibold text-rose-600" : ""}`}>{formatGBP(s.account.balancePence)}</td>
+                        <td><AccountBadge state={s.account.state} daysOverdue={s.account.daysOverdue} creditPence={s.account.creditPence} /></td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

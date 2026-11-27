@@ -14,14 +14,29 @@ import { PaymentForm } from "./payment-form";
 import { VoidPaymentButton } from "./void-payment";
 import { AddFeeForm } from "./add-fee-form";
 import { ReleaseControls } from "./release-controls";
+import { PortalAccount } from "./portal-account";
+import { requirePagePermission } from "@/server/session";
+import { can, type Role } from "@/domain/permissions";
+
+const FINANCE_ACTIONS = new Set(["fee.added", "payment.recorded", "payment.voided"]);
+const ACADEMIC_ACTIONS = new Set(["grade.entered", "grade.changed", "results.published", "results.withheld", "submission.created", "submission.replaced"]);
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> };
 
-async function load(id: string) {
+/**
+ * Server Components call services directly, bypassing API route guards — so this
+ * page enforces the permission matrix itself: each section is only *loaded*
+ * (not merely hidden) for roles allowed to see it.
+ */
+async function load(id: string, role: Role) {
   try {
-    return await Promise.all([getStudent(id), getStaffMarksheet(id), listStudentSubmissions(id)]);
+    return await Promise.all([
+      getStudent(id),
+      can(role, "results.read") ? getStaffMarksheet(id) : null,
+      can(role, "submissions.read") ? listStudentSubmissions(id) : null,
+    ]);
   } catch (err) {
     if (err instanceof NotFoundError) notFound();
     throw err;
@@ -66,10 +81,16 @@ function describe(details: unknown) {
 }
 
 export default async function StudentPage({ params, searchParams }: Props) {
+  const user = await requirePagePermission("students.read");
   const { id } = await params;
   const { created } = await searchParams;
-  const [s, marksheet, submissions] = await load(id);
+  const [s, marksheet, submissions] = await load(id, user.role);
   const a = s.account;
+  const may = (p: Parameters<typeof can>[1]) => can(user.role, p);
+  // The timeline mirrors the sections: no payment details for academics, no marks for finance.
+  const activity = s.auditLogs.filter(
+    (l) => (may("finance.read") || !FINANCE_ACTIONS.has(l.action)) && (may("results.read") || !ACADEMIC_ACTIONS.has(l.action)),
+  );
 
   return (
     <>
@@ -80,12 +101,13 @@ export default async function StudentPage({ params, searchParams }: Props) {
       />
 
       {created && <div className="mb-4"><Notice tone="green">Student enrolled with ID <strong className="font-mono">{created}</strong>. The programme fee has been assigned.</Notice></div>}
-      {s.status === "WITHDRAWN" && a.balancePence > 0 && (
+      {may("finance.read") && s.status === "WITHDRAWN" && a.balancePence > 0 && (
         <div className="mb-4"><Notice tone="red">This student has withdrawn but still owes {formatGBP(a.balancePence)}. The debt remains on the account.</Notice></div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {may("finance.read") && (
           <Card title="Fees & payments" actions={<AccountBadge state={a.state} daysOverdue={a.daysOverdue} creditPence={a.creditPence} />}>
             <div id="fees" className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Figure label="Total fees" value={formatGBP(a.billedPence)} />
@@ -118,7 +140,11 @@ export default async function StudentPage({ params, searchParams }: Props) {
                       <td>{METHOD_LABEL[p.method]}</td>
                       <td className={`text-right tabular-nums ${p.voidedAt ? "line-through" : ""}`}>{formatGBP(toPence(p.amount))}</td>
                       <td className="text-right">
-                        {p.voidedAt ? <span className="text-xs" title={p.voidReason ?? undefined}>Voided</span> : <VoidPaymentButton paymentId={p.id} reference={p.reference} />}
+                        {p.voidedAt ? (
+                          <span className="text-xs" title={p.voidReason ?? undefined}>Voided</span>
+                        ) : (
+                          may("payments.void") && <VoidPaymentButton paymentId={p.id} reference={p.reference} />
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -126,12 +152,16 @@ export default async function StudentPage({ params, searchParams }: Props) {
               </table>
             )}
 
-            <div className="mt-6 grid gap-6 border-t border-slate-100 pt-6 md:grid-cols-2">
-              <PaymentForm studentId={s.id} balancePence={a.balancePence} />
-              <AddFeeForm studentId={s.id} />
-            </div>
+            {(may("payments.write") || may("fees.write")) && (
+              <div className="mt-6 grid gap-6 border-t border-slate-100 pt-6 md:grid-cols-2">
+                {may("payments.write") && <PaymentForm studentId={s.id} balancePence={a.balancePence} />}
+                {may("fees.write") && <AddFeeForm studentId={s.id} />}
+              </div>
+            )}
           </Card>
+          )}
 
+          {submissions && (
           <Card title="Submissions" padded={false}>
             {submissions.length === 0 ? (
               <div className="p-5"><EmptyState title="No submissions yet" /></div>
@@ -154,7 +184,9 @@ export default async function StudentPage({ params, searchParams }: Props) {
               </table>
             )}
           </Card>
+          )}
 
+          {marksheet && (
           <Card title={<span id="results">Results</span>} actions={<ReleaseBadge status={marksheet.release.status} />}>
             {marksheet.grades.length === 0 ? (
               <EmptyState title="No grades entered yet">Grades are entered from each assessment&apos;s page.</EmptyState>
@@ -178,17 +210,20 @@ export default async function StudentPage({ params, searchParams }: Props) {
                 )}
               </>
             )}
-            <div className="mt-5 border-t border-slate-100 pt-5">
-              <ReleaseControls
-                studentId={s.id}
-                status={marksheet.release.status}
-                reason={marksheet.release.reason}
-                publishedAt={marksheet.release.publishedAt?.toISOString() ?? null}
-                gradeCount={marksheet.grades.length}
-                isOverdue={a.isOverdue}
-              />
-            </div>
+            {may("results.release") && (
+              <div className="mt-5 border-t border-slate-100 pt-5">
+                <ReleaseControls
+                  studentId={s.id}
+                  status={marksheet.release.status}
+                  reason={marksheet.release.reason}
+                  publishedAt={marksheet.release.publishedAt?.toISOString() ?? null}
+                  gradeCount={marksheet.grades.length}
+                  isOverdue={a.isOverdue}
+                />
+              </div>
+            )}
           </Card>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -203,13 +238,23 @@ export default async function StudentPage({ params, searchParams }: Props) {
               ]}
             />
             <div className="mt-5 border-t border-slate-100 pt-5">
-              <StatusEditor studentId={s.id} status={s.status} balancePence={a.balancePence} />
+              <PortalAccount
+                studentId={s.id}
+                status={s.portalAccount.status}
+                lastLoginAt={s.portalAccount.lastLoginAt?.toISOString() ?? null}
+                canManage={may("students.write")}
+              />
             </div>
+            {may("students.write") && (
+              <div className="mt-5 border-t border-slate-100 pt-5">
+                <StatusEditor studentId={s.id} status={s.status} balancePence={may("finance.read") ? a.balancePence : 0} />
+              </div>
+            )}
           </Card>
 
           <Card title="Activity" padded={false}>
             <ol className="max-h-[32rem] divide-y divide-slate-100 overflow-y-auto">
-              {s.auditLogs.map((l) => (
+              {activity.map((l) => (
                 <li key={l.id} className="px-5 py-3 text-sm">
                   <div className="font-medium text-slate-800">{ACTION_LABEL[l.action] ?? l.action}</div>
                   {describe(l.details) && <div className="text-xs text-slate-600">{describe(l.details)}</div>}

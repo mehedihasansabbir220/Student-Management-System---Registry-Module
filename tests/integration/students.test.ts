@@ -139,6 +139,16 @@ describe("student accounts", () => {
     expect(session.user.studentId).toBe(s.id);
   });
 
+  it("getStudent reports the portal account status without exposing secrets", async () => {
+    const p = await makeProgramme();
+    const s = await createStudent(validStudentInput(p.id), STAFF, today);
+    const pending = await getStudent(s.id, today);
+    expect(pending.portalAccount).toEqual({ status: "PENDING", lastLoginAt: null });
+    expect(JSON.stringify(pending)).not.toMatch(/passwordHash|tokenHash/);
+    await activate({ token: s.activationToken, password: "Student-Pass-1" }, { now: today });
+    expect((await getStudent(s.id, today)).portalAccount).toEqual({ status: "ACTIVE", lastLoginAt: today });
+  });
+
   it("an email change on the student record is mirrored to their account", async () => {
     const p = await makeProgramme();
     const s = await createStudent(validStudentInput(p.id), STAFF, today);

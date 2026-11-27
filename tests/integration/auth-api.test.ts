@@ -6,6 +6,7 @@ import * as meRoute from "@/app/api/auth/me/route";
 import * as activateRoute from "@/app/api/auth/activate/route";
 import * as changePasswordRoute from "@/app/api/auth/change-password/route";
 import * as sessionsRoute from "@/app/api/auth/sessions/route";
+import * as activationLinkRoute from "@/app/api/students/[id]/activation-link/route";
 import { db } from "@/server/db";
 import { createActivationToken } from "@/server/services/auth";
 import { makeProgramme, makeStudent, makeStudentUser, makeUser } from "../support/factories";
@@ -106,6 +107,21 @@ describe("/api/auth/refresh", () => {
     const loc = new URL(res.headers.get("location")!);
     expect(loc.host).toBe("localhost");
     expect(loc.pathname).toBe("/");
+  });
+});
+
+describe("POST /api/students/:id/activation-link", () => {
+  it("gives admins a working link and refuses other roles", async () => {
+    const s = await makeStudent((await makeProgramme()).id);
+    await makeStudentUser(s.id, { password: null });
+    const res = await call(activationLinkRoute.POST, { method: "POST", as: "admin", params: { id: s.id }, url: "http://localhost:3000/api/students/x/activation-link" });
+    expect(res.status).toBe(200);
+    const url = new URL(res.data.url);
+    expect(url.origin).toBe("http://localhost:3000");
+    expect(url.pathname).toBe("/activate");
+    const ok = await call(activateRoute.POST, { method: "POST", as: "none", json: { token: url.searchParams.get("token"), password: "Fresh-Password-1" } });
+    expect(ok.status).toBe(200);
+    expect((await call(activationLinkRoute.POST, { method: "POST", as: "finance", params: { id: s.id } })).status).toBe(403);
   });
 });
 
