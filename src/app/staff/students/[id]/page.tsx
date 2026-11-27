@@ -29,8 +29,8 @@ async function load(id: string) {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  // Metadata resolves before streaming starts, so notFound() here yields a real HTTP 404
-  // (inside the page body, the loading.tsx boundary would already have sent a 200).
+  // NB: no loading.tsx above this route on purpose — a Suspense boundary would flush
+  // a 200 before notFound() runs, and unknown records must return a real 404.
   const { id } = await params;
   const s = await getStudent(id).catch((err) => {
     if (err instanceof NotFoundError) notFound();

@@ -1,6 +1,6 @@
 # Task 10 — Validation & Error Handling (cross-cutting)
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** applies to all feature tasks
 **Assessment weight:** Technical quality (25%)
 

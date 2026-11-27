@@ -1,6 +1,6 @@
 # Task 09 — Seed Script
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 02 (extended as 04–07 are built)
 **Estimate:** 0.5 day
 

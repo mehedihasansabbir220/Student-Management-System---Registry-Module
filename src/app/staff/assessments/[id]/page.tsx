@@ -23,7 +23,8 @@ async function load(id: string) {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  // See students/[id]/page.tsx: notFound() in metadata gives a real 404 status.
+  // NB: no loading.tsx above this route on purpose — a Suspense boundary would flush
+  // a 200 before notFound() runs, and unknown records must return a real 404.
   const r = await load((await params).id);
   return { title: r.assessment.title };
 }

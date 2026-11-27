@@ -1,6 +1,6 @@
 # Task 07 — Marksheet & Results
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 06
 **Estimate:** 1 day
 **Requirement ref:** requirement.md §4

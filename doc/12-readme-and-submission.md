@@ -1,6 +1,6 @@
 # Task 12 — README, AI Usage & Submission
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** all tasks
 **Estimate:** 0.5 day
 **Assessment weight:** AI usage (15%) + supports all other dimensions

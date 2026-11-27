@@ -1,6 +1,6 @@
 # Task 08 — Registry Dashboard
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 05, 06, 07
 **Estimate:** 0.5 day
 

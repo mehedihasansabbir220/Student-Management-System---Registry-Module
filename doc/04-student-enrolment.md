@@ -1,6 +1,6 @@
 # Task 04 — Student Enrolment
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 02, 03
 **Estimate:** 1 day
 **Requirement ref:** requirement.md §1

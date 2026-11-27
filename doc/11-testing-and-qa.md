@@ -1,6 +1,6 @@
 # Task 11 — Testing & QA
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 04–08
 **Estimate:** 0.5 day
 

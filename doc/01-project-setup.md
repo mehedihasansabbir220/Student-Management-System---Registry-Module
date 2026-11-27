@@ -1,6 +1,6 @@
 # Task 01 — Project Setup
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** —
 **Estimate:** 0.5 day
 

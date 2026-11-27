@@ -1,6 +1,6 @@
 # Task 02 — Database Schema (Prisma)
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 01
 **Estimate:** 0.5 day
 **Assessment weight:** Stakeholder understanding (30%) + Technical quality (25%)

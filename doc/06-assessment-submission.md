@@ -1,6 +1,6 @@
 # Task 06 — Assessment Submission
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 04
 **Estimate:** 1 day
 **Requirement ref:** requirement.md §3

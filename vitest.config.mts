@@ -17,6 +17,8 @@ export default defineConfig({
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
           environment: "node",
+          // Keep test noise out of the real application log.
+          env: { LOG_FILE: "", LOG_LEVEL: "error" },
         },
       },
       {

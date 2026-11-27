@@ -1,6 +1,6 @@
 # Task 05 — Fees & Payments
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 04
 **Estimate:** 1 day
 **Requirement ref:** requirement.md §2

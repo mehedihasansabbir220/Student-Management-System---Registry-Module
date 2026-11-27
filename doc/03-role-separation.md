@@ -1,6 +1,6 @@
 # Task 03 — Role Separation (Staff / Student)
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** 01, 02
 **Estimate:** 0.25 day
 
