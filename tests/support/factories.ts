@@ -1,5 +1,6 @@
 import { db } from "@/server/db";
-import type { EnrolmentStatus } from "@prisma/client";
+import { hashPassword } from "@/server/auth/password";
+import type { EnrolmentStatus, Role } from "@prisma/client";
 
 let counter = 0;
 const uniq = () => `${Date.now().toString(36)}${(counter++).toString(36)}`;
@@ -14,6 +15,30 @@ export async function resetDatabase() {
 }
 
 export const STAFF = "staff:test";
+export const TEST_PASSWORD = "Correct-Horse-1";
+
+type UserOverrides = Partial<{ email: string; name: string; password: string | null; isDemo: boolean; isActive: boolean; studentId: string }>;
+
+/** A user with a known password (returned as `password`). Pass `password: null` for a not-yet-activated account. */
+export async function makeUser(role: Role, overrides: UserOverrides = {}) {
+  const password = overrides.password === undefined ? TEST_PASSWORD : overrides.password;
+  const user = await db.user.create({
+    data: {
+      role,
+      email: overrides.email ?? `${role.toLowerCase()}-${uniq()}@example.com`,
+      name: overrides.name ?? `Test ${role}`,
+      passwordHash: password === null ? null : await hashPassword(password),
+      isDemo: overrides.isDemo ?? false,
+      isActive: overrides.isActive ?? true,
+      studentId: overrides.studentId,
+    },
+  });
+  return { ...user, password: password ?? "" };
+}
+
+export function makeStudentUser(studentId: string, overrides: Omit<UserOverrides, "studentId"> = {}) {
+  return makeUser("STUDENT", { ...overrides, studentId });
+}
 
 export async function makeProgramme(overrides: Partial<{ code: string; name: string; feeAmount: string }> = {}) {
   return db.programme.create({

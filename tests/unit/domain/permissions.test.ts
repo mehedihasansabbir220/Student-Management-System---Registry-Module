@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ALL_PERMISSIONS, PERMISSIONS, can, homeFor, isStaff, type Role } from "@/domain/permissions";
+import { Role as PrismaRole } from "@prisma/client";
+import { ALL_PERMISSIONS, PERMISSIONS, ROLES, can, homeFor, isStaff, type Role } from "@/domain/permissions";
 
 describe("permission matrix", () => {
   it("gives the Registry Admin every permission", () => {
@@ -26,6 +27,12 @@ describe("permission matrix", () => {
   it("keeps results release with the Registry, and grades away from Finance", () => {
     expect(can("ACADEMIC", "results.release")).toBe(false);
     expect(can("FINANCE", "grades.write")).toBe(false);
+  });
+});
+
+describe("role list", () => {
+  it("matches the database Role enum exactly", () => {
+    expect([...ROLES].sort()).toEqual(Object.values(PrismaRole).sort());
   });
 });
 
