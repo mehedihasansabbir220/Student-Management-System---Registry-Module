@@ -183,12 +183,23 @@ These are server-side rules with tests. Hiding buttons alone is not enough.
 
 **Deploy phase (inserted after priority 5):** `prisma migrate deploy` on release, production env validation (`JWT_SECRET`, `DATABASE_URL` with `sslmode=require`, `DEMO_MODE`, `DEMO_PASSWORD`, `UPLOAD_DIR` on the volume), the HTTP smoke and Playwright suites run against the live URL, and the URL goes at the top of the README.
 
+### 5.11 CI/CD (GitHub Actions)
+
+**Decided by the user:** use Neon's per-PR database branching, starting from Neon's create/delete-branch workflow template.
+
+- **`ci.yml`** (every push and PR): `npm ci` → lint → typecheck → unit + integration tests against a Postgres service container → production build. Required check before merging to `master`.
+- **`neon-preview.yml`** (PRs): on opened/reopened/synchronize, create Neon branch `preview/pr-<n>-<branch>` (expires in 14 days) → `prisma migrate deploy` → seed → run the integration suite against it → post a schema-diff comment (`neondatabase/schema-diff-action`). On close, delete the branch.
+- **Changes from the template (builder's call, security):** replace `tj-actions/branch-names` with the built-in `github.head_ref` (that publisher had a 2025 supply-chain compromise, and the job has `NEON_API_KEY` in scope); pin every third-party action to a full commit SHA; set least-privilege `permissions:` per job (`contents: read`, plus `pull-requests: write` only for the diff comment); never echo database URLs.
+- **User sets up:** repo variable `NEON_PROJECT_ID`, repo secret `NEON_API_KEY` (never shared in chat or git).
+- Placed in the priority order alongside deploy (5b). The plain `ci.yml` lands early (end of phase 1) so every later phase is checked.
+
 ## 6. Decided by the user
 - Goal: maximise PEN submission impression and interview performance.
 - Approach A (evolve on a branch) with hand-rolled JWT.
 - Real JWT auth, shadcn/ui, redesign inspired by modern portals, more functionality.
 - Private Q&A + full code walkthrough, not shared via git.
 - Hosted live demo with Neon Postgres (§5.10); Neon Auth not used.
+- Neon per-PR database branches in GitHub Actions (§5.11).
 
 ## 7. Builder's calls (decided here, correctable)
 - Four roles and the permission matrix above.
