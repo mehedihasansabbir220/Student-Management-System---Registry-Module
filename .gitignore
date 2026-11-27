@@ -44,3 +44,4 @@ next-env.d.ts
 /uploads
 /logs
 !.env.example
+.test-uploads
