@@ -45,3 +45,4 @@ next-env.d.ts
 /logs
 !.env.example
 .test-uploads
+/.next-verify/

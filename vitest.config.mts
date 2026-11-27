@@ -40,6 +40,16 @@ export default defineConfig({
           hookTimeout: 60000,
         },
       },
+      {
+        extends: true,
+        test: {
+          name: "e2e",
+          include: ["tests/e2e/**/*.test.ts"],
+          environment: "node",
+          fileParallelism: false,
+          testTimeout: 30000,
+        },
+      },
     ],
   },
 });
