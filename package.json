@@ -16,7 +16,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:setup": "prisma migrate deploy && prisma db seed",
     "postinstall": "prisma generate",
-    "test:e2e": "vitest run --project e2e"
+    "test:e2e": "vitest run --project e2e",
+    "demo:reset": "prisma db seed"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
