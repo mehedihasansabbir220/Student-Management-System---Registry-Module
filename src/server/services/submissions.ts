@@ -20,7 +20,6 @@ type Viewer = { role: "STAFF" } | { role: "STUDENT"; studentId: string };
 /** Keep only a safe display name (no paths, control chars), capped in length. */
 function cleanFileName(name: string) {
   const base = name.split(/[\\/]/).pop() ?? "file";
-  // eslint-disable-next-line no-control-regex
   return base.replace(/[\u0000-\u001f"<>|]/g, "").slice(0, 200) || "file";
 }
 
