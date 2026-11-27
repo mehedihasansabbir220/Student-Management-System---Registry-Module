@@ -1,0 +1,217 @@
+// Student Management System — Registry Module
+// Design notes live in doc/02-database-schema.md.
+//
+// Conventions
+// - Money is Decimal(10,2), never Float.
+// - Derived values (balance, classification, overdue) are NOT stored; they are
+//   computed from source records so they can never drift.
+// - Business invariants that must never be violated are enforced in the DB as
+//   well (unique constraints here, CHECK constraints in the migration SQL).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EnrolmentStatus {
+  ENROLLED
+  DEFERRED
+  WITHDRAWN
+  COMPLETED
+}
+
+enum ReleaseStatus {
+  WITHHELD
+  PUBLISHED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CARD
+  CASH
+  SPONSOR
+  OTHER
+}
+
+model Programme {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  /// Standard annual tuition fee. Copied onto a Fee row at enrolment.
+  feeAmount Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  modules  Module[]
+  students Student[]
+}
+
+model Module {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  title       String
+  programmeId String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  programme   Programme    @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  assessments Assessment[]
+
+  @@index([programmeId])
+}
+
+model Student {
+  id            String          @id @default(cuid())
+  /// Human-facing ID, e.g. SMS-2025-0001. Never reused.
+  studentNumber String          @unique
+  fullName      String
+  /// Stored lower-cased so uniqueness is case-insensitive.
+  email         String          @unique
+  dateOfBirth   DateTime        @db.Date
+  programmeId   String
+  /// Format YYYY/YY, e.g. 2025/26
+  academicYear  String
+  status        EnrolmentStatus @default(ENROLLED)
+  createdAt     DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @db.Timestamptz(3)
+
+  programme     Programme      @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  fees          Fee[]
+  payments      Payment[]
+  submissions   Submission[]
+  grades        Grade[]
+  resultRelease ResultRelease?
+  auditLogs     AuditLog[]
+
+  @@index([status])
+  @@index([programmeId])
+  @@index([academicYear])
+}
+
+/// One row per intake year; incremented inside the create-student transaction.
+model StudentIdSequence {
+  year      Int @id
+  lastValue Int @default(0)
+}
+
+model Fee {
+  id           String   @id @default(cuid())
+  studentId    String
+  description  String
+  /// Snapshot of the amount owed. Changing Programme.feeAmount later does not rewrite history.
+  amount       Decimal  @db.Decimal(10, 2)
+  dueDate      DateTime @db.Date
+  academicYear String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([studentId])
+  @@index([dueDate])
+}
+
+/// Payments are append-only. Mistakes are corrected by voiding (with a reason), never deleting.
+model Payment {
+  id         String        @id @default(cuid())
+  studentId  String
+  amount     Decimal       @db.Decimal(10, 2)
+  paidOn     DateTime      @db.Date
+  /// Bank / receipt reference. Unique to stop the same payment being keyed twice.
+  reference  String        @unique
+  method     PaymentMethod @default(BANK_TRANSFER)
+  notes      String?
+  recordedAt DateTime      @default(now()) @db.Timestamptz(3)
+  voidedAt   DateTime?     @db.Timestamptz(3)
+  voidReason String?
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([studentId])
+}
+
+model Assessment {
+  id        String   @id @default(cuid())
+  title     String
+  moduleId  String
+  deadline  DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  module      Module       @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  submissions Submission[]
+  grades      Grade[]
+
+  @@index([moduleId])
+  @@index([deadline])
+}
+
+model Submission {
+  id           String   @id @default(cuid())
+  assessmentId String
+  studentId    String
+  originalName String
+  /// Path relative to UPLOAD_DIR. Never exposed to clients.
+  storageKey   String
+  mimeType     String
+  sizeBytes    Int
+  submittedAt  DateTime @db.Timestamptz(3)
+  /// Captured at upload time; stays true even if the deadline is later extended.
+  isLate       Boolean  @default(false)
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Restrict)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+}
+
+model Grade {
+  id           String   @id @default(cuid())
+  assessmentId String
+  studentId    String
+  mark         Decimal  @db.Decimal(5, 2)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Restrict)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+}
+
+/// Per-student publish/withhold switch. Defaults to WITHHELD so nothing leaks by accident.
+model ResultRelease {
+  studentId   String        @id
+  status      ReleaseStatus @default(WITHHELD)
+  reason      String?
+  /// Whether the withhold reason is shown to the student.
+  shareReason Boolean       @default(false)
+  publishedAt DateTime?     @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+}
+
+/// Who did what, when. Registry decisions (payments, grade changes, releases) must be traceable.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actor      String
+  action     String
+  entityType String
+  entityId   String
+  studentId  String?
+  details    Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  student Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, createdAt])
+  @@index([createdAt])
+}
