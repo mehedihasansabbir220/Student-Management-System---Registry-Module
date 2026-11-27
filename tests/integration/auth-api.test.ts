@@ -159,6 +159,26 @@ describe("logout, me, sessions, password", () => {
     expect(del.data.revoked).toBe(1);
   });
 
+  it("a shared demo account only ever sees its own session, so reviewers can't see each other's IPs", async () => {
+    const first = await signIn("REGISTRY_ADMIN", { isDemo: true });
+    // A second reviewer signs in to the same shared account from elsewhere.
+    await call(loginRoute.POST, { method: "POST", as: "none", json: { email: first.u.email, password: first.u.password }, headers: { "x-forwarded-for": freshIp() } });
+    const list = await call(sessionsRoute.GET, { as: { cookie: first.cookie } });
+    expect(list.status).toBe(200);
+    expect(list.data.items).toHaveLength(1);
+    expect(list.data.items[0].current).toBe(true);
+  });
+
+  it("a shared demo account can't sign out the other reviewers using it", async () => {
+    const first = await signIn("REGISTRY_ADMIN", { isDemo: true });
+    const second = await call(loginRoute.POST, { method: "POST", as: "none", json: { email: first.u.email, password: first.u.password }, headers: { "x-forwarded-for": freshIp() } });
+    const del = await call(sessionsRoute.DELETE, { method: "DELETE", as: { cookie: first.cookie } });
+    expect(del.status).toBe(422);
+    const stillIn = await call(meRoute.GET, { as: { cookie: asCookieHeader(second.setCookie) } });
+    expect(stillIn.status).toBe(200);
+    expect(await db.refreshToken.count({ where: { userId: first.u.id, revokedAt: { not: null } } })).toBe(0);
+  });
+
   it("change-password is refused for shared demo accounts", async () => {
     const { u, cookie } = await signIn("REGISTRY_ADMIN", { isDemo: true });
     const res = await call(changePasswordRoute.POST, { method: "POST", as: { cookie }, json: { currentPassword: u.password, newPassword: "Brand-New-Pass-1" } });
