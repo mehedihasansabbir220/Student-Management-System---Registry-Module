@@ -1,9 +1,15 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/server/session";
+import { loadShellUser } from "@/server/shell";
+import { AppShell, DatabaseDown } from "@/components/shell/app-shell";
 
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  const { user, dbDown } = await loadShellUser();
+  if (dbDown) return <DatabaseDown />;
   if (!user) redirect("/login");
   if (user.role !== "STUDENT") redirect("/staff");
-  return <>{children}</>;
+  return (
+    <AppShell user={{ name: user.name, email: user.email, role: user.role, isDemo: user.isDemo }} area="student">
+      {children}
+    </AppShell>
+  );
 }
