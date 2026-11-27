@@ -39,6 +39,15 @@ describe("activate", () => {
     expect(err?.message).toMatch(/expired/);
   });
 
+  it("refuses a leftover link for an account that already has a password (no password-reset backdoor)", async () => {
+    const s = await makeStudent((await makeProgramme()).id);
+    const u = await makeStudentUser(s.id); // already has a password
+    const token = await db.$transaction((tx) => createActivationToken(tx, u.id, t0));
+    const err = await fail(activate({ token, password: "Hijacked-Pass-1" }, at(1000)));
+    expect(err).toBeInstanceOf(BusinessRuleError);
+    await expect(login({ email: u.email, password: u.password }, at(2000))).resolves.toBeTruthy();
+  });
+
   it("refuses an unknown link", async () => {
     expect(await fail(activate({ token: "nope", password: "My-New-Password-1" }, at(0)))).toBeInstanceOf(BusinessRuleError);
   });

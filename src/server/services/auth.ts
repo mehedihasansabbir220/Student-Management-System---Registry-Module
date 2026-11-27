@@ -194,6 +194,8 @@ export async function activate(input: { token: string; password: string }, meta:
   if (!row) throw new BusinessRuleError("This activation link is not valid. Ask the Registry for a new one.");
   if (row.usedAt) throw new BusinessRuleError("This activation link has already been used. Sign in instead.");
   if (row.expiresAt <= now) throw new BusinessRuleError("This activation link has expired. Ask the Registry for a new one.");
+  // Activation only ever sets a *first* password; it must never become a password-reset backdoor.
+  if (row.user.passwordHash) throw new BusinessRuleError("This account is already active. Sign in instead.");
   if (samePasswordAsEmail(input.password, row.user.email)) {
     throw new ValidationError("Choose a different password", { password: "Your password can't be your email address" });
   }
