@@ -13,7 +13,10 @@ export function middleware(req: NextRequest) {
   headers.set("x-request-id", requestId);
 
   if (!req.nextUrl.pathname.startsWith("/api")) {
-    const target = pageAccess(req.nextUrl.pathname, parseSessionCookie(req.cookies.get(SESSION_COOKIE)?.value));
+    // TEMP (until plan Task 10 verifies the JWT here): map the v1 cookie onto v2 roles.
+    const legacy = parseSessionCookie(req.cookies.get(SESSION_COOKIE)?.value);
+    const session = legacy ? { role: legacy.role === "STAFF" ? ("REGISTRY_ADMIN" as const) : ("STUDENT" as const) } : null;
+    const target = pageAccess(req.nextUrl.pathname, session);
     if (target) return NextResponse.redirect(new URL(target, req.url));
   }
 
