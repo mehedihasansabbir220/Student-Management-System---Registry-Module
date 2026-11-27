@@ -2,7 +2,7 @@
 
 How the Registry module is put together: layers, request flow, authentication, authorisation, data model, UI system, error handling and testing.
 
-For *what* the system does, see [FEATURES.md](./FEATURES.md). The product rules and the reasons behind them are in the [README](../README.md#product-decisions--edge-cases).
+For *what* the system does, see [FEATURES.md](./FEATURES.md); for each role's features mapped to the code, see [ROLES.md](./ROLES.md). The product rules and the reasons behind them are in the [README](../README.md#product-decisions--edge-cases).
 
 ---
 
@@ -221,7 +221,7 @@ erDiagram
 | Unit (`tests/unit`) | Pure functions, hooks in jsdom | Domain rules at every boundary, schemas, JWT/password/token primitives, UI logic (nav, breadcrumbs, table state, tabs, countdowns, statements, uploads, form-error mapping), and a guard that no v1 styling remains |
 | Integration (`tests/integration`) | Real route handlers + real Postgres (`TEST_DATABASE_URL`) | Auth flows (rotation, reuse detection, lockout, activation), the permission matrix over every route, concurrency (ID generation, void races), file storage, withheld results never leaking |
 | E2E (`tests/e2e`) | A running server over HTTP | Real sign-in per role, redirects, every page rendering, seeded edge cases, real 404s |
-| Browser (`tests/browser`) | Playwright in Chromium on a production build | One-click demo sign-in per role, every sidebar page with zero console errors, student tabs, mobile sidebar, dark mode, role redirects |
+| Browser (`tests/browser`) | Playwright in Chromium on a production build + the seeded test DB | One-click sign-in per role, every page with zero console errors, tabs, mobile sidebar, dark mode, role redirects, and the flows that write data (enrol, pay, create + mark, upload, publish → student sees marks) |
 
 Everything is written test-first. CI (`.github/workflows/ci.yml`) runs lint, typecheck, unit and integration tests against a Postgres service, and a production build on every push and pull request.
 

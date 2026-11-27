@@ -1,6 +1,6 @@
 # Features
 
-A tour of everything the Registry module does, organised by who uses it. Each feature notes the edge cases it handles. For how it is built, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+A tour of everything the Registry module does, organised by who uses it. Each feature notes the edge cases it handles. For how it is built, see [ARCHITECTURE.md](./ARCHITECTURE.md); to find the code behind each feature, see [ROLES.md](./ROLES.md).
 
 **Try it:** run the app with `DEMO_MODE=true` and use the one-click demo cards on the sign-in page.
 

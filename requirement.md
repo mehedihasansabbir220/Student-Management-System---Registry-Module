@@ -126,7 +126,7 @@ Everything above this line is the original brief, unchanged. This section maps e
 | **Professional UI** (shadcn/ui): role-aware sidebar, dark mode, mobile layout, shareable table links, inline marking, drag-and-drop upload with progress, deadline countdowns, fees statement, printable results | The brief weights stakeholder understanding at 30%. Staff use this all day, so speed and clarity matter: inline marking instead of a form per grade, a dashboard that starts with what's urgent, links that can be pasted to a colleague. |
 | **Typed errors, request ids, structured logs** | When a user reports "it failed", the reference on their screen leads to one log line. |
 | **DB constraints** (unique + CHECK) as a last line of defence | Rules in code can be bypassed by a bug or a script; the database refuses bad data regardless. |
-| **Four test suites** (unit, integration on real Postgres, HTTP E2E, Playwright browser) written test-first, plus CI | Edge cases are only handled if a test proves it. CI keeps every change green. |
-| **Architecture and features documentation** | So a reviewer can understand the system in minutes: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md), [docs/FEATURES.md](./docs/FEATURES.md). |
+| **Four test suites** (unit, integration on real Postgres, HTTP E2E, Playwright browser incl. every write flow) written test-first, plus CI | Edge cases are only handled if a test proves it. CI keeps every change green. |
+| **Architecture and features documentation** | So a reviewer can understand the system in minutes: [docs/ROLES.md](./docs/ROLES.md) (each role's features mapped to the code), [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md), [docs/FEATURES.md](./docs/FEATURES.md). |
 
 Deliberately **not** built (see the README's limitations): email/SMS delivery, payment gateways, SSO, cloud file storage, admissions, timetabling and attendance. They're outside the Registry workflows the brief describes.

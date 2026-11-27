@@ -15,6 +15,7 @@ Around them: **real sign-in with four roles** (Registry Admin, Finance, Academic
 
 | Document | What's in it |
 |---|---|
+| [`docs/ROLES.md`](./docs/ROLES.md) | **Start here to read the code:** what each role (Registry Admin, Finance, Academic, Student) can do, and for every feature the screen, API route, permission and service function that implement it |
 | [`docs/FEATURES.md`](./docs/FEATURES.md) | Feature tour by role, with the edge cases each feature handles |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, request lifecycle, authentication, permission matrix, data model, UI system, error handling, testing |
 | [`requirement.md`](./requirement.md) | The original brief, followed by **requirement coverage** and **what was added beyond the brief, and why** |
@@ -57,7 +58,7 @@ Every seeded student can sign in with `firstname.lastname@student.example.ac.uk`
 | `npm run db:seed` | Reset all data and reload the demo dataset (idempotent) |
 | `npm test` | Unit + integration tests (integration uses `TEST_DATABASE_URL`) |
 | `npm run test:e2e` | Smoke tests against a running server (`E2E_BASE_URL`, default `http://localhost:3000`) |
-| `npm run test:browser` | Playwright browser smoke for every role (builds and serves on :3100; needs `npm run db:seed` and `npx playwright install chromium` once) |
+| `npm run test:browser` | Playwright browser tests for every role (builds and serves on :3100 against the seeded **test** database; run `npx playwright install chromium` once) |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 
 ### Environment variables
@@ -208,42 +209,52 @@ All routes return JSON (or the standard error body). "Permission" is from the ma
 
 ## Testing
 
-**737 automated tests**, written test-first (red → green), plus CI on every push and pull request (lint, typecheck, unit + integration against Postgres, production build).
+**749 automated tests**, written test-first (red → green), plus CI on every push and pull request (lint, typecheck, unit + integration against Postgres, production build).
 
 | Suite | Count | What it covers |
 |---|---|---|
-| **Unit** (`npm run test:unit`) | 445 | Domain rules at every boundary (classification edges, FIFO overdue, money without float drift, submission rules, file magic bytes), schemas, JWT / password / token primitives, API client refresh-and-retry, UI logic (navigation per role, breadcrumbs, table URL state, tabs, countdowns, fees statement, uploads, form-error mapping, the form hook in jsdom), and a guard that no v1 styling is left in any source file |
+| **Unit** (`npm run test:unit`) | 450 | Domain rules at every boundary (classification edges, FIFO overdue, money without float drift, submission rules, file magic bytes), schemas, JWT / password / token primitives, API client refresh-and-retry, UI logic (navigation per role, breadcrumbs, table URL state, tabs, countdowns, fees statement, uploads, form-error mapping, the form hook in jsdom), and a guard that no v1 styling is left in any source file |
 | **Integration** (`npm run test:integration`) | 259 | Real route handlers against a real Postgres DB: login, lockout, refresh rotation and reuse detection, activation, demo-account protection, **the permission matrix over every route and role**, concurrent ID generation, void races, file storage, withheld results never leaking, seed coverage |
 | **E2E** (`npm run test:e2e`) | 24 | A running server over HTTP: real sign-in per role, redirects, every page rendering, seeded edge cases, real 404 statuses |
-| **Browser** (`npm run test:browser`) | 9 | Playwright in Chromium: one-click demo sign-in per role, every sidebar page with **zero console errors**, student record tabs, mobile sidebar, dark mode, role redirects |
+| **Browser** (`npm run test:browser`) | 16 | Playwright in Chromium on a production build and a freshly seeded **test** database. Smoke: one-click sign-in per role, every sidebar page with **zero console errors**, tabs, mobile sidebar, dark mode, role redirects. Flows that write data: enrol a student, record a payment (and a duplicate reference), create an assessment and mark it, upload coursework (and a rejected file type), publish results → the student sees their marks |
 
 ---
 
 ## How I used AI
 
-I used **Claude Code** (Anthropic's CLI agent, Claude Opus) as a pair programmer throughout. I made the product decisions and reviewed every change; AI did most of the typing.
+I built this with **Claude Code** (Anthropic's coding agent) as a pair programmer. The split was deliberate: **I owned the product and the review; the AI did most of the typing.** Every rule in "Product decisions" above is my decision, every change was reviewed by me before it moved on, and nothing was accepted without a test proving it.
 
-**How I worked with it**
-1. **Requirements → plan.** I pasted the brief and had it produce `requirement.md` plus one task file per feature in `doc/` (scope, data model, API, edge cases, acceptance criteria). I reviewed the proposed decisions (fee snapshot, FIFO overdue, resubmission-after-deadline rule, default-withheld results) before any code was written.
-2. **Test-driven development.** I asked it to work test-first. For every module it wrote failing tests, ran them to confirm they failed for the right reason, then implemented. Tests live in `tests/`, separate from `src/`.
-3. **Senior-level non-functional requirements.** I explicitly asked for proper error handling, edge cases and server error logging. That led to the typed error hierarchy, the single error-response shape, request-id correlation, the JSON log file, DB CHECK constraints and the audit log.
+### The workflow
 
-**Where AI got it wrong (and how it was caught)**
-- `instrumentation.ts` imported the Node-only logger in a way that leaked `node:fs` into the Edge bundle (`UnhandledSchemeError`). *I hit this in `npm run dev`*; fixed with the documented `NEXT_RUNTIME === "nodejs"` guard.
-- The root layout's `try/catch` was **swallowing Next.js's internal dynamic-rendering signal** and logging it as an error. Caught by reading the build output; fixed with `unstable_rethrow`.
-- Unknown records showed the 404 page but returned **HTTP 200**. The E2E test caught it. The first fix attempt was wrong; debugging step by step (bot vs normal user-agent, then removing `loading.tsx`) proved a Suspense boundary was flushing headers early.
-- Running `next build` while my dev server was running **corrupted `.next`** (`Cannot find module './3897.js'`). Fixed by making `distDir` configurable (`NEXT_DIST_DIR`).
-- Wrong Prisma event types on log listeners; unit tests writing into the real app log; editor/CLI TypeScript version mismatch. All caught by `tsc`/review and fixed.
-- Prisma's safety guard blocked the agent from running `migrate reset`. Instead of bypassing it, the test setup was changed to the non-destructive `migrate deploy` + per-test `TRUNCATE`.
+| Step | What I did | What the AI did |
+|---|---|---|
+| 1. Understand the brief | Read it as a Registry team would and decided the stakeholder rules: fee snapshot, oldest-charge-first overdue, one late submission, withheld by default | Turned the brief into `requirement.md` and one task file per feature in [`doc/`](./doc/README.md) (scope, data model, API, edge cases, acceptance criteria) |
+| 2. Design before code | Approved or corrected each decision. For v2 I chose real auth over a toggle, four roles, and the redesign | Wrote the v2 design spec and a step-by-step plan per phase ([`docs/superpowers/`](./docs/superpowers/)), with exact files, interfaces and the tests that prove each task |
+| 3. Build test-first | Insisted on TDD and on tests living in `tests/`, not `src/` | For every unit: wrote the failing test, ran it to watch it fail for the right reason, implemented, ran the full suite, lint and typecheck |
+| 4. Review every task | Checked each task in the browser and in `git show` before approving the next, and approved every push | Stopped after each task with a summary of what changed, where, and every judgement call it made |
+| 5. Keep it honest | Asked for senior-level error handling, logging and edge cases | Logged every deviation from the plan with its reason, so nothing was decided silently |
 
-**v2 (auth, roles, redesign).** I wrote a design spec with the agent (`docs/superpowers/specs/`), approved it, then had it break each phase into a step-by-step plan (`docs/superpowers/plans/`) and execute it test-first, task by task. I reviewed each task in the browser and in git before it moved on. Mistakes caught along the way:
-- The shadcn CLI pulled in an unrelated npm package called `cn` when its config was incomplete. It was spotted in the diff, removed, and replaced with the standard helper.
-- The new enrol form sent the date of birth as a full timestamp, which the API (rightly) rejected. A hook test reproducing it was written first, then the form kit was fixed to submit exactly what the user typed.
-- Shared demo accounts let one reviewer sign out every other reviewer and see their IP addresses. It was fixed on the server with tests.
-- The table library's new major version had a different API. It was pinned to the stable version instead of working around it.
-- A browser test that passed first time was deliberately broken to prove it could fail.
+### Guardrails that made AI output trustworthy
+- **A failing test first, always.** A test that passes before the code exists proves nothing. When a browser test passed on its first run, I had it deliberately broken to confirm it could fail.
+- **Four test layers** (unit, integration on real Postgres, HTTP end-to-end, Playwright in a real browser) and **CI on every push**, so "it looks right" was never the bar.
+- **One source of truth** for the rules that matter (the permission matrix, `classify()`, money in pence, the zod schemas), shared by server and UI, so the AI couldn't introduce two versions of a rule.
+- **The database as the last line of defence:** unique and CHECK constraints catch what code review misses.
 
-**What I decided myself:** the scope, every product rule in the section above, the four roles and who may do what, real auth over a toggle, the TDD workflow, keeping tests outside `src/`, and choosing a correct HTTP status over a loading skeleton.
+### Where the AI got it wrong, and how it was caught
+| Mistake | How it was caught | Fix |
+|---|---|---|
+| The new enrol form sent the date of birth as a full timestamp; the API (correctly) rejected it, so enrolment would have failed | Spotted while reviewing the next task; reproduced with a failing hook test | Forms now submit exactly what the user typed and the server parses it. Now also covered by a real browser test that enrols a student |
+| Shared demo accounts let one reviewer sign out every other reviewer and see their IP addresses | Code review of the sessions endpoint | Fixed on the server with tests |
+| The shadcn CLI installed an unrelated npm package called `cn` when its config was incomplete | Reading the dependency diff | Removed; replaced with the standard helper |
+| The table library jumped to a new major version with a different API | Checking the installed version | Pinned to the stable major |
+| `instrumentation.ts` leaked a Node-only module into the Edge bundle | Running the dev server | The documented `NEXT_RUNTIME` guard |
+| A `try/catch` in the layout swallowed Next.js's own rendering signal | Reading the build output | `unstable_rethrow` |
+| Unknown records showed a 404 page but returned **HTTP 200** | The end-to-end test | Removed a `loading.tsx` whose Suspense boundary flushed headers early |
+| A production build corrupted the running dev server's `.next` | Hit in practice | Configurable `NEXT_DIST_DIR` |
+| The agent tried to run `prisma migrate reset` | Prisma's safety guard blocked it | Tests switched to non-destructive `migrate deploy` + per-test `TRUNCATE` |
+
+### What I'd tell another engineer
+AI is fastest when the thinking is already done: a clear spec, a plan with exact interfaces, and a test for every claim. It is weakest at noticing what it hasn't been asked about, which is why the review step and the tests carried more weight than the generation. The bugs above were all caught *before* submission because each layer (review, unit, integration, browser, CI) catches a different kind of mistake.
 
 ---
 
