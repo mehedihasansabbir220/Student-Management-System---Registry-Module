@@ -22,6 +22,14 @@ async function main() {
       `Overdue: ${d.overdue.length} (${formatGBP(d.overdueTotalPence)}) · Late submissions: ${d.lateSubmissions.length} · ` +
         `Awaiting release: ${d.awaitingRelease.length} · Credit held: ${formatGBP(d.finance.creditPence)}\n`,
     );
+    console.log("Demo sign-in (password = DEMO_PASSWORD, default Demo@12345):");
+    console.table([
+      { role: "Registry Admin", email: "admin@demo.sms" },
+      { role: "Finance Officer", email: "finance@demo.sms" },
+      { role: "Academic Staff", email: "academic@demo.sms" },
+      { role: "Student", email: "amelia.clarke@student.example.ac.uk" },
+    ]);
+    console.log("James Wilson's account is left 'invitation pending' to demo the activation flow.\n");
   } finally {
     await db.$disconnect();
   }

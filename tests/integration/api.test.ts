@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/server/db";
 import * as health from "@/app/api/health/route";
-import * as session from "@/app/api/session/route";
 import * as students from "@/app/api/students/route";
 import * as student from "@/app/api/students/[id]/route";
 import * as payments from "@/app/api/students/[id]/payments/route";
@@ -40,19 +39,6 @@ describe("GET /api/health", () => {
   });
 });
 
-describe("POST /api/session (role toggle)", () => {
-  it("sets the session cookie for staff", async () => {
-    const res = await call(session.POST, { method: "POST", as: "none", json: { role: "STAFF" } });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("set-cookie")).toContain("sms_session=");
-  });
-
-  it("rejects acting as a student that does not exist", async () => {
-    const res = await call(session.POST, { method: "POST", as: "none", json: { role: "STUDENT", studentId: "ghost" } });
-    expect(res.status).toBe(404);
-  });
-});
-
 describe("authorisation", () => {
   it("returns 401 with no session", async () => {
     const res = await call(students.GET, { as: "none" });
@@ -76,7 +62,7 @@ describe("authorisation", () => {
   });
 
   it("returns 403 when staff call a student-only endpoint", async () => {
-    const res = await call(myResults.GET, { as: "staff" });
+    const res = await call(myResults.GET, { as: "admin" });
     expect(res.status).toBe(403);
   });
 });
@@ -87,6 +73,13 @@ describe("students API", () => {
     const res = await call(students.POST, { method: "POST", json: studentBody(p.id) });
     expect(res.status).toBe(201);
     expect(res.data.studentNumber).toBe("SMS-2025-0001");
+  });
+
+  it("returns a copyable activation link for the new student's account, not the raw token", async () => {
+    const p = await makeProgramme();
+    const res = await call(students.POST, { method: "POST", json: studentBody(p.id) });
+    expect(res.data.activationUrl).toMatch(/^http:\/\/localhost\/activate\?token=[A-Za-z0-9_-]{43}$/);
+    expect(res.data).not.toHaveProperty("activationToken");
   });
 
   it("returns 400 with field errors for invalid input", async () => {
@@ -254,6 +247,6 @@ describe("audit trail through the API", () => {
     const p = await makeProgramme();
     const created = await call(students.POST, { method: "POST", json: studentBody(p.id) });
     const log = await db.auditLog.findFirstOrThrow({ where: { studentId: created.data.id } });
-    expect(log.actor).toBe("staff:registry-admin");
+    expect(log.actor).toMatch(/^user:registry_admin\..*@test\.local$/);
   });
 });

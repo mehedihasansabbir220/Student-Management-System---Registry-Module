@@ -15,6 +15,8 @@ import { recordPayment, voidPayment } from "@/server/services/fees";
 import { submitAssessment } from "@/server/services/submissions";
 import { enterGrade, publishResults, withholdResults } from "@/server/services/results";
 import { createAssessment } from "@/server/services/assessments";
+import { issueActivationLink } from "@/server/services/auth";
+import { hashPassword } from "@/server/auth/password";
 
 const ACTOR = "seed:registry-admin";
 const DAY = 86_400_000;
@@ -153,6 +155,23 @@ export async function runSeed(db: PrismaClient, today = new Date()) {
   await updateStudent(ethan.id, { status: "COMPLETED" }, ACTOR);
   await updateStudent(james.id, { status: "DEFERRED" }, ACTOR);
   await updateStudent(hannah.id, { status: "WITHDRAWN" }, ACTOR);
+
+  // ---- Demo accounts (design §5.7 / §5.10) ---------------------------------------
+  // Every seeded account is a protected, shared demo account (no lockout, no password change).
+  const demoHash = await hashPassword(config().demoPassword);
+  await db.user.createMany({
+    data: [
+      { email: "admin@demo.sms", name: "Rachel Adams", role: "REGISTRY_ADMIN", passwordHash: demoHash, isDemo: true },
+      { email: "finance@demo.sms", name: "Farid Khan", role: "FINANCE", passwordHash: demoHash, isDemo: true },
+      { email: "academic@demo.sms", name: "Dr. Alice Moreno", role: "ACADEMIC", passwordHash: demoHash, isDemo: true },
+    ],
+  });
+  // Student accounts were created (pending) at enrolment. Activate all but James, who shows the invitation flow.
+  await db.user.updateMany({ where: { role: "STUDENT", NOT: { studentId: james.id } }, data: { passwordHash: demoHash, isDemo: true } });
+  await db.user.updateMany({ where: { studentId: james.id }, data: { isDemo: true } });
+  await db.activationToken.deleteMany({ where: { user: { passwordHash: { not: null } } } });
+  // His enrolment-time link has expired by now (enrolled 10 days ago); issue a fresh one.
+  await issueActivationLink(james.id, ACTOR);
 
   return {
     students: { amelia, oliver, priya, daniel, sophie, james, hannah, ethan },

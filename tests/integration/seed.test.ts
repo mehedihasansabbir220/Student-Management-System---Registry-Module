@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { runSeed } from "../../prisma/seed-data";
 import { getDashboard } from "@/server/services/dashboard";
 import { getStudentResults } from "@/server/services/results";
+import { login } from "@/server/services/auth";
 
 const today = new Date("2026-03-15T12:00:00Z");
 
@@ -58,5 +59,48 @@ describe("seed", () => {
     await runSeed(db, today);
     const ids = (await db.student.findMany()).map((s) => s.studentNumber);
     for (const id of ids) expect(id).toMatch(/^SMS-\d{4}-\d{4}$/);
+  });
+});
+
+describe("seeded demo accounts", () => {
+  const DEMO = "Demo@12345";
+  const signIn = (email: string) => login({ email, password: DEMO }, { now: today });
+
+  it("has one working account per staff role", async () => {
+    await runSeed(db, today);
+    expect((await signIn("admin@demo.sms")).user.role).toBe("REGISTRY_ADMIN");
+    expect((await signIn("finance@demo.sms")).user.role).toBe("FINANCE");
+    expect((await signIn("academic@demo.sms")).user.role).toBe("ACADEMIC");
+  });
+
+  it("lets seeded students sign in to their portal", async () => {
+    await runSeed(db, today);
+    const s = await signIn("amelia.clarke@student.example.ac.uk");
+    expect(s.user.role).toBe("STUDENT");
+    expect(s.user.studentId).toBeTruthy();
+  });
+
+  it("leaves James Wilson's invitation pending with a usable activation link", async () => {
+    await runSeed(db, today);
+    const james = await db.user.findUniqueOrThrow({ where: { email: "james.wilson@student.example.ac.uk" }, include: { activationTokens: true } });
+    expect(james.passwordHash).toBeNull();
+    const usable = james.activationTokens.filter((t) => !t.usedAt && t.expiresAt > today);
+    expect(usable).toHaveLength(1);
+  });
+
+  it("marks every seeded account as a protected demo account", async () => {
+    await runSeed(db, today);
+    expect(await db.user.count({ where: { isDemo: false } })).toBe(0);
+  });
+
+  it("leaves no stray activation links on already-active accounts", async () => {
+    await runSeed(db, today);
+    expect(await db.activationToken.count({ where: { usedAt: null, user: { passwordHash: { not: null } } } })).toBe(0);
+  });
+
+  it("is idempotent for users too", async () => {
+    await runSeed(db, today);
+    await runSeed(db, today);
+    expect(await db.user.count({ where: { role: { not: "STUDENT" } } })).toBe(3);
   });
 });

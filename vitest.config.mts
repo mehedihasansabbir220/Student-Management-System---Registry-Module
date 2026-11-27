@@ -4,6 +4,8 @@ import path from "node:path";
 import { loadEnv } from "vite";
 
 const env = loadEnv("test", process.cwd(), "");
+// Fixed test-only secret so tests never depend on a developer's .env.
+const TEST_JWT_SECRET = "test-secret-test-secret-test-secret-123";
 const serverOnlyStub = path.resolve("tests/support/server-only-stub.ts");
 
 export default defineConfig({
@@ -15,10 +17,10 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["tests/unit/**/*.test.ts"],
+          include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
           environment: "node",
           // Keep test noise out of the real application log.
-          env: { LOG_FILE: "", LOG_LEVEL: "error" },
+          env: { LOG_FILE: "", LOG_LEVEL: "error", JWT_SECRET: TEST_JWT_SECRET },
         },
       },
       {
@@ -37,6 +39,8 @@ export default defineConfig({
             MAX_UPLOAD_MB: "1",
             LOG_LEVEL: "error",
             LOG_FILE: "",
+            JWT_SECRET: TEST_JWT_SECRET,
+            DEMO_PASSWORD: "Demo@12345",
           },
           testTimeout: 20000,
           hookTimeout: 60000,

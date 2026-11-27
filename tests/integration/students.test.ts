@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/server/db";
 import { createStudent, getStudent, listStudents, updateStudent } from "@/server/services/students";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
-import { STAFF, makeProgramme, makeStudent, validStudentInput } from "../support/factories";
+import { activate } from "@/server/services/auth";
+import { STAFF, makeProgramme, makeStudent, makeUser, validStudentInput } from "../support/factories";
 
 const today = new Date("2025-09-20T09:00:00Z");
 
@@ -113,6 +114,27 @@ describe("listStudents", () => {
     expect(r.items).toHaveLength(1);
   });
 
+  it("sorts by name descending", async () => {
+    await seed();
+    const r = await listStudents({ page: 1, pageSize: 20, sort: "-name" }, today);
+    expect(r.items.map((s) => s.fullName)).toEqual(["Grace Hopper", "Alan Turing", "Ada Lovelace"]);
+  });
+
+  it("sorts by Student ID descending", async () => {
+    await seed();
+    const r = await listStudents({ page: 1, pageSize: 20, sort: "-studentNumber" }, today);
+    const numbers = r.items.map((s) => s.studentNumber);
+    expect(numbers).toEqual([...numbers].sort().reverse());
+  });
+
+  it("returns an empty page past the end while still reporting the page count", async () => {
+    await seed();
+    const r = await listStudents({ page: 40, pageSize: 2 }, today);
+    expect(r.items).toEqual([]);
+    expect(r.total).toBe(3);
+    expect(r.pageCount).toBe(2);
+  });
+
   it("includes each student's balance and overdue flag", async () => {
     const { ada } = await seed();
     await db.fee.create({ data: { studentId: ada.id, description: "Tuition", amount: "1000.00", dueDate: new Date("2025-09-01"), academicYear: "2025/26" } });
@@ -125,6 +147,51 @@ describe("listStudents", () => {
 describe("getStudent", () => {
   it("throws NotFoundError for an unknown id", async () => {
     await expect(getStudent("nope", today)).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("student accounts", () => {
+  it("enrolment creates a pending STUDENT account and an activation token that works", async () => {
+    const p = await makeProgramme();
+    const s = await createStudent(validStudentInput(p.id, { email: "new.student@example.com" }), STAFF, today);
+    const user = await db.user.findUniqueOrThrow({ where: { studentId: s.id } });
+    expect(user).toMatchObject({ role: "STUDENT", email: "new.student@example.com", name: "Ada Lovelace", passwordHash: null });
+    const session = await activate({ token: s.activationToken, password: "Student-Pass-1" }, { now: today });
+    expect(session.user.studentId).toBe(s.id);
+  });
+
+  it("getStudent reports the portal account status without exposing secrets", async () => {
+    const p = await makeProgramme();
+    const s = await createStudent(validStudentInput(p.id), STAFF, today);
+    const pending = await getStudent(s.id, today);
+    expect(pending.portalAccount).toEqual({ status: "PENDING", lastLoginAt: null });
+    expect(JSON.stringify(pending)).not.toMatch(/passwordHash|tokenHash/);
+    await activate({ token: s.activationToken, password: "Student-Pass-1" }, { now: today });
+    expect((await getStudent(s.id, today)).portalAccount).toEqual({ status: "ACTIVE", lastLoginAt: today });
+  });
+
+  it("an email change on the student record is mirrored to their account", async () => {
+    const p = await makeProgramme();
+    const s = await createStudent(validStudentInput(p.id), STAFF, today);
+    await updateStudent(s.id, { email: "changed@example.com" }, STAFF);
+    expect((await db.user.findUniqueOrThrow({ where: { studentId: s.id } })).email).toBe("changed@example.com");
+  });
+
+  it("refuses an email already used by a staff account", async () => {
+    const p = await makeProgramme();
+    await makeUser("FINANCE", { email: "finance@example.com" });
+    const s = await createStudent(validStudentInput(p.id), STAFF, today);
+    const err = await updateStudent(s.id, { email: "finance@example.com" }, STAFF).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err.fields).toHaveProperty("email");
+  });
+
+  it("refuses to enrol with an email already used by a staff account", async () => {
+    const p = await makeProgramme();
+    await makeUser("FINANCE", { email: "finance@example.com" });
+    const err = await createStudent(validStudentInput(p.id, { email: "finance@example.com" }), STAFF, today).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err.fields).toHaveProperty("email");
   });
 });
 

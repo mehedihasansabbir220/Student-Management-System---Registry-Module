@@ -9,6 +9,8 @@
 export type ErrorCode =
   | "VALIDATION_ERROR"
   | "UNAUTHENTICATED"
+  | "TOKEN_EXPIRED"
+  | "TOO_MANY_REQUESTS"
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "CONFLICT"
@@ -40,8 +42,24 @@ export class ValidationError extends AppError {
 }
 
 export class UnauthenticatedError extends AppError {
-  constructor(message = "Choose a role to continue") {
+  constructor(message = "Please sign in to continue") {
     super("UNAUTHENTICATED", 401, message);
+  }
+}
+
+/** The access token is valid but expired — the client should refresh and retry. */
+export class TokenExpiredError extends AppError {
+  constructor() {
+    super("TOKEN_EXPIRED", 401, "Your session has expired");
+  }
+}
+
+export class RateLimitedError extends AppError {
+  constructor(
+    message: string,
+    public readonly retryAfterSeconds: number,
+  ) {
+    super("TOO_MANY_REQUESTS", 429, message);
   }
 }
 

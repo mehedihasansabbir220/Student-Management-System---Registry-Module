@@ -46,3 +46,6 @@ next-env.d.ts
 !.env.example
 .test-uploads
 /.next-verify/
+.superpowers/
+playwright-report/
+test-results/

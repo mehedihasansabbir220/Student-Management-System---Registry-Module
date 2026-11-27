@@ -105,18 +105,24 @@ export const updateStudentSchema = z
   .refine((o) => Object.values(o).some((v) => v !== undefined), "Nothing to update");
 export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
 
+/** Sortable student-list columns; a leading "-" means descending. */
+export const STUDENT_SORTS = ["name", "-name", "studentNumber", "-studentNumber", "year", "-year", "enrolled", "-enrolled"] as const;
+export type StudentSort = (typeof STUDENT_SORTS)[number];
+
 export const studentListQuerySchema = z.object({
   q: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional()),
   programmeId: z.preprocess(emptyToUndefined, z.string().optional()),
   status: z.preprocess(emptyToUndefined, status.optional()),
   academicYear: z.preprocess(emptyToUndefined, z.string().optional()),
+  sort: z.preprocess(emptyToUndefined, z.enum(STUDENT_SORTS, { error: "Unknown sort" }).default("name")),
   page: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).default(1)),
   pageSize: z.preprocess(
     emptyToUndefined,
     z.coerce.number().int().min(1).default(20).transform((n) => Math.min(n, 100)),
   ),
 });
-export type StudentListQuery = z.infer<typeof studentListQuerySchema>;
+/** Parsed list query; `sort` is optional for internal callers (defaults to name). */
+export type StudentListQuery = Omit<z.infer<typeof studentListQuerySchema>, "sort"> & { sort?: StudentSort };
 
 // ---------- fees & payments --------------------------------------------------
 
@@ -199,6 +205,31 @@ export const withholdResultsSchema = z.object({
   shareReason: z.boolean().default(false),
 });
 export type WithholdResultsInput = z.infer<typeof withholdResultsSchema>;
+
+// ---------- authentication ---------------------------------------------------
+
+export const PASSWORD_MIN = 10;
+
+export const passwordSchema = z
+  .string({ error: "Password is required" })
+  .min(PASSWORD_MIN, `Use at least ${PASSWORD_MIN} characters`)
+  .max(200, "Password is too long");
+
+export const loginSchema = z.object({
+  email: z.string({ error: "Email is required" }).trim().toLowerCase().pipe(z.email("Enter a valid email address")),
+  // No policy check on login: never tell an attacker which rule a password fails.
+  password: z.string({ error: "Password is required" }).min(1, "Password is required").max(200),
+});
+
+export const activateSchema = z.object({
+  token: z.string({ error: "Activation link is invalid" }).trim().min(1, "Activation link is invalid"),
+  password: passwordSchema,
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string({ error: "Enter your current password" }).min(1, "Enter your current password"),
+  newPassword: passwordSchema,
+});
 
 // ---------- session ----------------------------------------------------------
 

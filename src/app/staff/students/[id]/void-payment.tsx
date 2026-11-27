@@ -2,40 +2,41 @@
 
 import { useState } from "react";
 import { apiFetch } from "@/lib/api-client";
-import { useAction } from "@/components/forms";
+import { voidPaymentSchema } from "@/lib/validation";
+import { SubmitButton, TextareaField } from "@/components/form/form-fields";
+import { useApiForm } from "@/components/form/use-api-form";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-/** Inline confirm (no browser dialogs): payments are voided with a reason, never deleted. */
-export function VoidPaymentButton({ paymentId, reference }: { paymentId: string; reference: string }) {
+/** Payments are never deleted: voiding keeps the row, with a reason, in the audit trail. */
+export function VoidPaymentButton({ paymentId, reference, amount }: { paymentId: string; reference: string; amount: string }) {
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const action = useAction((r: string) => apiFetch(`/api/payments/${paymentId}/void`, { method: "POST", json: { reason: r } }), {
+  const { form, onSubmit, pending } = useApiForm(voidPaymentSchema, (v) => apiFetch(`/api/payments/${paymentId}/void`, { method: "POST", json: v }), {
+    defaultValues: { reason: "" },
+    successToast: `Payment ${reference} voided`,
     onSuccess: () => setOpen(false),
   });
 
-  if (!open) {
-    return <button className="text-xs text-slate-500 hover:text-rose-600" onClick={() => setOpen(true)}>Void</button>;
-  }
   return (
-    <form
-      className="flex flex-col items-end gap-1"
-      onSubmit={(e) => {
-        e.preventDefault();
-        action.run(reason);
-      }}
-    >
-      <input
-        autoFocus
-        className="input w-56 py-1 text-xs"
-        placeholder={`Why void ${reference}?`}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        aria-label="Reason for voiding"
-      />
-      <div className="flex gap-1">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(false)}>Cancel</button>
-        <button className="btn btn-danger btn-sm" disabled={action.pending}>Void payment</button>
-      </div>
-      {(action.fields.reason || action.error) && <span className="text-xs text-rose-600">{action.fields.reason ?? action.error}</span>}
-    </form>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 text-muted-foreground hover:text-destructive">Void</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Void payment {reference}?</DialogTitle>
+          <DialogDescription>
+            {amount} will no longer count towards the balance. The payment stays on record as voided, with your reason.
+          </DialogDescription>
+        </DialogHeader>
+        <form noValidate onSubmit={onSubmit} className="grid gap-4">
+          <TextareaField form={form} name="reason" label="Reason" placeholder="e.g. Recorded against the wrong student" />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <SubmitButton pending={pending} pendingLabel="Voiding…" variant="destructive">Void payment</SubmitButton>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

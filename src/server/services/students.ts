@@ -6,8 +6,9 @@ import { NotFoundError, ValidationError } from "../errors";
 import { logger } from "../logger";
 import { rethrowUnique } from "../prisma-errors";
 import { formatStudentNumber, intakeYear } from "@/domain/student-number";
-import type { CreateStudentInput, StudentListQuery, UpdateStudentInput } from "@/lib/validation";
+import type { CreateStudentInput, StudentListQuery, StudentSort, UpdateStudentInput } from "@/lib/validation";
 import { accountFor, accountSelect } from "./accounts";
+import { createActivationToken } from "./auth";
 
 /** Fee due date policy: 30 days after enrolment (see doc/05). */
 export const FEE_DUE_DAYS = 30;
@@ -23,6 +24,7 @@ const addDaysUtc = (d: Date, days: number) =>
  *   3. snapshot the programme fee onto a Fee row
  *   4. create the (withheld) result release
  *   5. audit
+ *   6. create the student's portal account + activation token (returned as `activationToken`, shown once)
  * If anything fails, everything rolls back — including the sequence, so IDs are not burnt.
  */
 export async function createStudent(input: CreateStudentInput, actor: string, now = new Date()) {
@@ -60,6 +62,9 @@ export async function createStudent(input: CreateStudentInput, actor: string, no
         },
       });
       await tx.resultRelease.create({ data: { studentId: created.id } });
+      // 6. a student portal account (no password yet) + a single-use activation link
+      const user = await tx.user.create({ data: { role: "STUDENT", email: created.email, name: created.fullName, studentId: created.id } });
+      const activationToken = await createActivationToken(tx, user.id, now);
       await audit(tx, {
         actor,
         action: "student.created",
@@ -68,13 +73,23 @@ export async function createStudent(input: CreateStudentInput, actor: string, no
         studentId: created.id,
         details: { studentNumber: created.studentNumber, programme: programme.code, feeAmount: programme.feeAmount.toString() },
       });
-      return created;
+      return { ...created, activationToken };
     });
     logger.info("student enrolled", { studentId: student.id, studentNumber: student.studentNumber });
     return student;
   } catch (err) {
     rethrowUnique(err, { email: EMAIL_TAKEN });
   }
+}
+
+const SORT_FIELD = { name: "fullName", studentNumber: "studentNumber", year: "academicYear", enrolled: "createdAt" } as const;
+
+/** Stable ordering: the chosen column, then Student ID (unique) as the tiebreaker. */
+function studentOrderBy(sort: StudentSort): Prisma.StudentOrderByWithRelationInput[] {
+  const desc = sort.startsWith("-");
+  const field = SORT_FIELD[(desc ? sort.slice(1) : sort) as keyof typeof SORT_FIELD];
+  const order = desc ? "desc" : "asc";
+  return field === "studentNumber" ? [{ studentNumber: order }] : [{ [field]: order }, { studentNumber: "asc" }];
 }
 
 export async function listStudents(query: StudentListQuery, today = new Date()) {
@@ -95,7 +110,7 @@ export async function listStudents(query: StudentListQuery, today = new Date()) 
     db.student.count({ where }),
     db.student.findMany({
       where,
-      orderBy: [{ fullName: "asc" }, { studentNumber: "asc" }],
+      orderBy: studentOrderBy(query.sort ?? "name"),
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
       include: { programme: { select: { id: true, code: true, name: true } }, ...accountSelect },
@@ -120,10 +135,17 @@ export async function getStudent(id: string, today = new Date()) {
       payments: { orderBy: [{ paidOn: "desc" }, { recordedAt: "desc" }] },
       resultRelease: true,
       auditLogs: { orderBy: { createdAt: "desc" }, take: 50 },
+      // Select only what staff need to see — never the password hash.
+      user: { select: { isActive: true, lastLoginAt: true, passwordHash: true } },
     },
   });
   if (!student) throw new NotFoundError("Student");
-  return { ...student, account: accountFor(student.fees, student.payments, today) };
+  const { user, ...rest } = student;
+  const portalAccount = {
+    status: !user ? ("NONE" as const) : !user.isActive ? ("DISABLED" as const) : user.passwordHash ? ("ACTIVE" as const) : ("PENDING" as const),
+    lastLoginAt: user?.lastLoginAt ?? null,
+  };
+  return { ...rest, portalAccount, account: accountFor(student.fees, student.payments, today) };
 }
 
 export async function updateStudent(id: string, input: UpdateStudentInput, actor: string) {
@@ -133,6 +155,13 @@ export async function updateStudent(id: string, input: UpdateStudentInput, actor
   try {
     return await db.$transaction(async (tx) => {
       const updated = await tx.student.update({ where: { id }, data: input });
+      // The portal account mirrors the record, so a student signs in with their current email.
+      if (input.email !== undefined || input.fullName !== undefined) {
+        await tx.user.updateMany({
+          where: { studentId: id },
+          data: { ...(input.email !== undefined && { email: input.email }), ...(input.fullName !== undefined && { name: input.fullName }) },
+        });
+      }
 
       const changed = (Object.keys(input) as (keyof UpdateStudentInput)[]).filter(
         (k) => input[k] !== undefined && String(existing[k]) !== String(updated[k]),

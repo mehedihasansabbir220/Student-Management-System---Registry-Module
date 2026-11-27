@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
+import { BookOpenCheck, Clock, FileText } from "lucide-react";
 import { currentStudentOrRedirect } from "@/server/current-student";
 import { listAssessmentsForStudent } from "@/server/services/assessments";
 import { config } from "@/server/config";
-import { Card, EmptyState, PageHeader } from "@/components/ui";
+import { countdown } from "@/lib/countdown";
+import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { SubmissionBadge, WindowBadge } from "@/components/badges";
-import { formatDateTime, relativeToNow } from "@/lib/format";
+import { EmptyState, PageHeader } from "@/components/common";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardAction } from "@/components/ui/card";
 import { UploadForm } from "./upload-form";
 
-export const metadata: Metadata = { title: "My assessments" };
+export const metadata: Metadata = { title: "Coursework" };
 export const dynamic = "force-dynamic";
 
 export default async function MyAssessments() {
@@ -18,47 +22,50 @@ export default async function MyAssessments() {
 
   return (
     <>
-      <PageHeader title="My assessments" subtitle={`Upload PDF or DOCX files (max ${maxUploadMb} MB). You can resubmit until the deadline.`} />
+      <PageHeader title="Coursework" subtitle={`Upload PDF or DOCX files (max ${maxUploadMb} MB). You can resubmit until the deadline.`} />
       {items.length === 0 ? (
-        <EmptyState title="No assessments have been set for your programme yet" />
+        <EmptyState title="No assessments have been set for your programme yet" icon={BookOpenCheck} />
       ) : (
-        <div className="space-y-4">
-          {items.map((a) => (
-            <Card key={a.id}>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-semibold">{a.title}</h2>
-                    <WindowBadge window={a.window} />
-                  </div>
-                  <p className="text-sm text-slate-500">{a.module.code} {a.module.title}</p>
-                  <p className={`mt-1 text-sm ${a.window === "CLOSING_SOON" ? "font-medium text-amber-700" : "text-slate-600"}`}>
-                    Due {formatDateTime(a.deadline)} · {relativeToNow(a.deadline, now)}
-                  </p>
-                </div>
-                <div className="text-right text-sm">
-                  {a.submission ? (
-                    <>
-                      <SubmissionBadge state={a.submission.isLate ? "LATE" : "ON_TIME"} />
-                      <div className="mt-1 text-xs text-slate-500">
-                        <a className="link" href={`/api/submissions/${a.submission.id}/file`}>{a.submission.originalName}</a>
-                        <div>{formatDateTime(a.submission.submittedAt)}{a.submission.version > 1 && ` · version ${a.submission.version}`}</div>
-                      </div>
-                    </>
-                  ) : (
-                    <SubmissionBadge state="MISSING" />
+        <div className="grid gap-4">
+          {items.map((a) => {
+            const due = countdown(a.deadline, now);
+            return (
+              <Card key={a.id}>
+                <CardHeader>
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                    {a.title} <WindowBadge window={a.window} />
+                  </CardTitle>
+                  <CardDescription>
+                    {a.module.code} {a.module.title}
+                    <span className={cn("mt-1 flex items-center gap-1.5", due.urgent && "font-medium text-amber-700 dark:text-amber-400")}>
+                      <Clock className="size-3.5" /> Due {formatDateTime(a.deadline)} · {due.label}
+                    </span>
+                  </CardDescription>
+                  <CardAction className="text-right">
+                    <SubmissionBadge state={a.submission ? (a.submission.isLate ? "LATE" : "ON_TIME") : "MISSING"} />
+                  </CardAction>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {a.submission && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                      <a className="inline-flex min-w-0 items-center gap-1.5 font-medium text-primary hover:underline" href={`/api/submissions/${a.submission.id}/file`}>
+                        <FileText className="size-4 shrink-0" /> <span className="truncate">{a.submission.originalName}</span>
+                      </a>
+                      <span className="text-xs text-muted-foreground">
+                        Submitted {formatDateTime(a.submission.submittedAt)}
+                        {a.submission.version > 1 && ` · version ${a.submission.version}`}
+                      </span>
+                    </div>
                   )}
-                </div>
-              </div>
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                {a.canSubmit ? (
-                  <UploadForm assessmentId={a.id} isResubmission={!!a.submission} willBeLate={a.willBeLate} maxMb={maxUploadMb} />
-                ) : (
-                  <p className="text-sm text-slate-500">{a.blockedReason}</p>
-                )}
-              </div>
-            </Card>
-          ))}
+                  {a.canSubmit ? (
+                    <UploadForm assessmentId={a.id} title={a.title} isResubmission={!!a.submission} willBeLate={a.willBeLate} maxMb={maxUploadMb} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{a.blockedReason}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </>

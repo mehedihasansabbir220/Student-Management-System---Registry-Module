@@ -1,45 +1,71 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
-import { useAction } from "@/components/forms";
+import { describeError } from "@/lib/form-errors";
+import { notifyError } from "@/components/feedback";
+import { Input } from "@/components/ui/input";
 import { ClassificationPreview } from "./classification-preview";
 
 /** Inline mark entry. Saves on Enter or blur, only when the value actually changed. */
-export function GradeCell({ assessmentId, studentId, initial, hasSubmission }: { assessmentId: string; studentId: string; initial: number | null; hasSubmission: boolean }) {
+export function GradeCell({ assessmentId, studentId, studentName, initial, hasSubmission, readOnly }: { assessmentId: string; studentId: string; studentName: string; initial: number | null; hasSubmission: boolean; readOnly: boolean }) {
   const [value, setValue] = useState(initial === null ? "" : String(initial));
   const [saved, setSaved] = useState(initial === null ? "" : String(initial));
-  const action = useAction(
-    (mark: string) => apiFetch<{ mark: number }>("/api/grades", { method: "PUT", json: { assessmentId, studentId, mark } }),
-    { onSuccess: (g) => setSaved(String(g.mark)) },
-  );
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const dirty = value.trim() !== saved && value.trim() !== "";
-  const error = action.fields.mark ?? action.error;
 
-  const save = () => {
-    if (dirty && !action.pending) action.run(value.trim());
-  };
+  if (readOnly) {
+    return saved ? (
+      <div className="flex items-center gap-2"><span className="w-14 text-right font-semibold tabular-nums">{saved}</span><ClassificationPreview value={saved} /></div>
+    ) : (
+      <span className="text-xs text-muted-foreground">Not graded</span>
+    );
+  }
+
+  async function save() {
+    if (!dirty || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const g = await apiFetch<{ mark: number }>("/api/grades", { method: "PUT", json: { assessmentId, studentId, mark: value.trim() } });
+      setSaved(String(g.mark));
+      setValue(String(g.mark));
+    } catch (err) {
+      const d = describeError(err);
+      if (d.fields.mark) setError(d.fields.mark);
+      else notifyError(err);
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
-    <div>
+    <div className="grid gap-1">
       <div className="flex items-center gap-2">
-        <input
-          className="input w-20 py-1 text-right tabular-nums"
+        <Input
+          className="h-8 w-20 text-right tabular-nums"
           inputMode="decimal"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onBlur={save}
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())}
-          aria-label="Mark"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void save();
+            }
+          }}
+          aria-label={`Mark for ${studentName}`}
           aria-invalid={error ? true : undefined}
-          disabled={action.pending}
+          disabled={pending}
         />
         <ClassificationPreview value={value} />
-        {action.pending && <span className="text-xs text-slate-400">Saving…</span>}
-        {!action.pending && !dirty && saved && !error && <span className="text-xs text-emerald-600" aria-label="Saved">✓</span>}
+        {pending && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Saving" />}
+        {!pending && !dirty && saved && !error && <Check className="size-4 text-emerald-600" aria-label="Saved" />}
       </div>
-      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
-      {!hasSubmission && dirty && <p className="mt-1 text-xs text-amber-700">No submission received — check before saving.</p>}
+      {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+      {!hasSubmission && dirty && <p className="text-xs text-amber-700 dark:text-amber-400">No submission received. Check before saving.</p>}
     </div>
   );
 }

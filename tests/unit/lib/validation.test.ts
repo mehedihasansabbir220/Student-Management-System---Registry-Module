@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  activateSchema,
+  changePasswordSchema,
+  loginSchema,
+  passwordSchema,
   createAssessmentSchema,
   createStudentSchema,
   gradeSchema,
@@ -142,7 +146,7 @@ describe("withholdResultsSchema", () => {
 
 describe("studentListQuerySchema", () => {
   it("treats empty strings from the URL as 'no filter'", () => {
-    expect(studentListQuerySchema.parse({ q: "", status: "", programmeId: "" })).toEqual({ page: 1, pageSize: 20 });
+    expect(studentListQuerySchema.parse({ q: "", status: "", programmeId: "", sort: "" })).toEqual({ page: 1, pageSize: 20, sort: "name" });
   });
 
   it("coerces page and clamps pageSize", () => {
@@ -151,5 +155,35 @@ describe("studentListQuerySchema", () => {
 
   it("rejects an unknown status", () => {
     expect(studentListQuerySchema.safeParse({ status: "NOPE" }).success).toBe(false);
+  });
+
+  it("accepts a known sort and defaults to name", () => {
+    expect(studentListQuerySchema.parse({ sort: "-year" }).sort).toBe("-year");
+    expect(studentListQuerySchema.parse({}).sort).toBe("name");
+  });
+
+  it("rejects an unknown sort so the page can fall back with a notice", () => {
+    expect(studentListQuerySchema.safeParse({ sort: "bogus" }).success).toBe(false);
+  });
+});
+
+describe("auth schemas", () => {
+  it("normalises the login email", () => {
+    expect(loginSchema.parse({ email: "  Admin@Demo.SMS ", password: "x" }).email).toBe("admin@demo.sms");
+  });
+
+  it("rejects short passwords", () => {
+    expect(passwordSchema.safeParse("short").success).toBe(false);
+    expect(passwordSchema.safeParse("long-enough-1").success).toBe(true);
+  });
+
+  it("requires a token and a valid new password to activate", () => {
+    expect(activateSchema.safeParse({ token: "", password: "long-enough-1" }).success).toBe(false);
+    expect(activateSchema.safeParse({ token: "t", password: "short" }).success).toBe(false);
+  });
+
+  it("requires the current and a valid new password to change password", () => {
+    expect(changePasswordSchema.safeParse({ currentPassword: "a", newPassword: "long-enough-1" }).success).toBe(true);
+    expect(changePasswordSchema.safeParse({ currentPassword: "", newPassword: "long-enough-1" }).success).toBe(false);
   });
 });

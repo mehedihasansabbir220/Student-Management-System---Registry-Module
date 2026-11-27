@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError, type ZodType } from "zod";
-import { AppError, ValidationError, type ErrorCode, type FieldErrors } from "./errors";
+import { AppError, ForbiddenError, ValidationError, type ErrorCode, type FieldErrors } from "./errors";
 import { logger, runWithContext } from "./logger";
 
 /** The single error shape every API route returns. Mirrored in src/lib/api-client.ts. */
@@ -30,6 +30,7 @@ export function route<P = Record<string, never>>(handler: Handler<P>) {
     return runWithContext({ requestId, method: req.method, path: pathname }, async () => {
       let response: Response;
       try {
+        assertSameOrigin(req);
         const params = await ctx.params;
         const result = await handler(req, { params });
         response = result instanceof Response ? result : NextResponse.json(result ?? { ok: true });
@@ -43,6 +44,27 @@ export function route<P = Record<string, never>>(handler: Handler<P>) {
       return response;
     });
   };
+}
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * CSRF defence (alongside SameSite cookies): browsers always send Origin on
+ * cross-site state-changing requests, so a foreign Origin is refused. Requests
+ * with no Origin (curl, server-to-server) carry no ambient browser cookies risk.
+ */
+function assertSameOrigin(req: NextRequest) {
+  if (SAFE_METHODS.has(req.method)) return;
+  const origin = req.headers.get("origin");
+  if (!origin) return;
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    throw new ForbiddenError("Cross-site request blocked");
+  }
+  if (originHost !== host) throw new ForbiddenError("Cross-site request blocked");
 }
 
 export function toErrorResponse(err: unknown, requestId: string): Response {

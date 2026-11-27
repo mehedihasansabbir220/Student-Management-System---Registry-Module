@@ -1,20 +1,37 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { pageAccess } from "@/lib/access";
-import { SESSION_COOKIE, parseSessionCookie } from "@/lib/session-cookie";
+import { ACCESS_COOKIE, SESSION_HINT_COOKIE } from "@/lib/auth/cookie-names";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 
 /**
- * Page routing by role (edge runtime — cookie only, no DB).
- * Also stamps every request with an x-request-id so logs from pages and API
- * routes can be correlated end to end.
+ * Edge middleware (no DB):
+ *  - stamps every request with an x-request-id for end-to-end log correlation;
+ *  - for page navigations, verifies the access JWT and routes by role.
+ *    Expired/missing token but a live session → silent refresh via /api/auth/refresh.
+ * This is a UX layer: pages and API routes re-check identity against the DB.
  */
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
   const headers = new Headers(req.headers);
   headers.set("x-request-id", requestId);
 
   if (!req.nextUrl.pathname.startsWith("/api")) {
-    const target = pageAccess(req.nextUrl.pathname, parseSessionCookie(req.cookies.get(SESSION_COOKIE)?.value));
-    if (target) return NextResponse.redirect(new URL(target, req.url));
+    let session: { role: Awaited<ReturnType<typeof verifyAccessToken>>["role"] } | null = null;
+    const token = req.cookies.get(ACCESS_COOKIE)?.value;
+    if (token) {
+      try {
+        session = { role: (await verifyAccessToken(token)).role };
+      } catch {
+        session = null; // expired, tampered or wrong secret → treated as signed out
+      }
+    }
+    const canRefresh = req.cookies.get(SESSION_HINT_COOKIE)?.value === "1";
+    const target = pageAccess(req.nextUrl.pathname, session, { canRefresh });
+    if (target) {
+      const res = NextResponse.redirect(new URL(target, req.url));
+      res.headers.set("x-request-id", requestId);
+      return res;
+    }
   }
 
   const res = NextResponse.next({ request: { headers } });

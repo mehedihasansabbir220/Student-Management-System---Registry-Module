@@ -29,6 +29,13 @@ enum ReleaseStatus {
   PUBLISHED
 }
 
+enum Role {
+  REGISTRY_ADMIN
+  FINANCE
+  ACADEMIC
+  STUDENT
+}
+
 enum PaymentMethod {
   BANK_TRANSFER
   CARD
@@ -85,6 +92,7 @@ model Student {
   grades        Grade[]
   resultRelease ResultRelease?
   auditLogs     AuditLog[]
+  user          User?
 
   @@index([status])
   @@index([programmeId])
@@ -214,4 +222,69 @@ model AuditLog {
 
   @@index([studentId, createdAt])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Authentication (docs/superpowers/specs/2026-11-27-v2-product-design.md §5.1)
+// ---------------------------------------------------------------------------
+
+/// A person who can sign in. Students get one automatically at enrolment.
+model User {
+  id               String    @id @default(cuid())
+  /// Lower-case (DB CHECK). For students this mirrors Student.email.
+  email            String    @unique
+  name             String
+  /// null until the account is activated
+  passwordHash     String?
+  role             Role
+  /// Set iff role = STUDENT (DB CHECK)
+  studentId        String?   @unique
+  isActive         Boolean   @default(true)
+  /// Shared demo account: exempt from lockout, cannot change password (§5.10)
+  isDemo           Boolean   @default(false)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime? @db.Timestamptz(3)
+  lastLoginAt      DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  student          Student?          @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  refreshTokens    RefreshToken[]
+  activationTokens ActivationToken[]
+
+  @@index([role])
+}
+
+/// One row per issued refresh token. Rows sharing a familyId are one login session;
+/// rotation chains them via replacedById. Only a SHA-256 of the token is stored.
+model RefreshToken {
+  id           String    @id @default(cuid())
+  userId       String
+  tokenHash    String    @unique
+  familyId     String
+  expiresAt    DateTime  @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  replacedById String?
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+}
+
+/// Single-use link a new user follows to set their first password (72 h).
+model ActivationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

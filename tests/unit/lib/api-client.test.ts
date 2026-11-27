@@ -42,3 +42,51 @@ describe("apiFetch", () => {
     expect(err.code).toBe("NETWORK_ERROR");
   });
 });
+
+describe("apiFetch session refresh", () => {
+  const expired = () => new Response(JSON.stringify({ error: { code: "TOKEN_EXPIRED", message: "Your session has expired", requestId: "r" } }), { status: 401 });
+  const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+  /** Routes stubbed fetch calls by URL so concurrency is easy to reason about. */
+  function stubFetch(handlers: { refresh: () => Response; api: () => Response }) {
+    const fn = vi.fn(async (url: string) => (url === "/api/auth/refresh" ? handlers.refresh() : handlers.api()));
+    vi.stubGlobal("fetch", fn);
+    return fn;
+  }
+
+  it("refreshes once and retries when the access token has expired", async () => {
+    let calls = 0;
+    const fn = stubFetch({ refresh: () => ok({ user: {} }), api: () => (calls++ === 0 ? expired() : ok({ saved: true })) });
+    await expect(apiFetch("/api/x", { method: "POST", json: { a: 1 } })).resolves.toEqual({ saved: true });
+    expect(fn.mock.calls.map((c) => c[0])).toEqual(["/api/x", "/api/auth/refresh", "/api/x"]);
+  });
+
+  it("shares one refresh between concurrent requests", async () => {
+    const seen = new Set<string>();
+    const fn = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/auth/refresh") return ok({});
+      const key = `${url}:${String(init?.body)}`;
+      if (seen.has(key)) return ok({ url });
+      seen.add(key);
+      return expired();
+    });
+    vi.stubGlobal("fetch", fn);
+    await Promise.all([apiFetch("/api/a"), apiFetch("/api/b")]);
+    expect(fn.mock.calls.filter((c) => c[0] === "/api/auth/refresh")).toHaveLength(1);
+  });
+
+  it("sends the user to login (with a return path) when refresh fails", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { pathname: "/staff", search: "?tab=fees", assign });
+    stubFetch({ refresh: () => new Response(JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "x", requestId: "r" } }), { status: 401 }), api: expired });
+    const err = (await apiFetch("/api/x").catch((e) => e)) as ApiClientError;
+    expect(err.code).toBe("SESSION_EXPIRED");
+    expect(assign).toHaveBeenCalledWith("/login?next=%2Fstaff%3Ftab%3Dfees");
+  });
+
+  it("does not try to refresh on other 401s", async () => {
+    const fn = stubFetch({ refresh: () => ok({}), api: () => new Response(JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "x", requestId: "r" } }), { status: 401 }) });
+    await apiFetch("/api/x").catch(() => undefined);
+    expect(fn.mock.calls.map((c) => c[0])).toEqual(["/api/x"]);
+  });
+});
