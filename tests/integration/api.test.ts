@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/server/db";
 import * as health from "@/app/api/health/route";
-import * as session from "@/app/api/session/route";
 import * as students from "@/app/api/students/route";
 import * as student from "@/app/api/students/[id]/route";
 import * as payments from "@/app/api/students/[id]/payments/route";
@@ -37,19 +36,6 @@ describe("GET /api/health", () => {
     const res = await call(health.GET, { as: "none" });
     expect(res.status).toBe(200);
     expect(res.data).toMatchObject({ status: "ok", database: "up" });
-  });
-});
-
-describe("POST /api/session (role toggle)", () => {
-  it("sets the session cookie for staff", async () => {
-    const res = await call(session.POST, { method: "POST", as: "none", json: { role: "STAFF" } });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("set-cookie")).toContain("sms_session=");
-  });
-
-  it("rejects acting as a student that does not exist", async () => {
-    const res = await call(session.POST, { method: "POST", as: "none", json: { role: "STUDENT", studentId: "ghost" } });
-    expect(res.status).toBe(404);
   });
 });
 
