@@ -78,6 +78,29 @@ describe("route wrapper", () => {
     expect(res.headers.get("x-request-id")).toBe("abc-123");
   });
 
+  describe("cross-site request protection", () => {
+    const send = (method: string, origin?: string) => {
+      const headers: Record<string, string> = { host: "localhost:3000" };
+      if (origin) headers.origin = origin;
+      return route(async () => ({ ok: true }))(new NextRequest("http://localhost:3000/api/x", { method, headers }), ctx);
+    };
+
+    it("blocks a state-changing request from another site", async () => {
+      const res = await send("POST", "https://evil.test");
+      expect(res.status).toBe(403);
+      expect((await res.json()).error.code).toBe("FORBIDDEN");
+    });
+
+    it("allows the same site, and requests without an Origin header (non-browser clients)", async () => {
+      expect((await send("POST", "http://localhost:3000")).status).toBe(200);
+      expect((await send("PATCH")).status).toBe(200);
+    });
+
+    it("does not block safe methods", async () => {
+      expect((await send("GET", "https://evil.test")).status).toBe(200);
+    });
+  });
+
   it("never lets an unexpected throw escape as an unhandled rejection", async () => {
     const res = await route(async () => {
       throw new TypeError("cannot read properties of undefined");

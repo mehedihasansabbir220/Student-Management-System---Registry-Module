@@ -254,6 +254,6 @@ describe("audit trail through the API", () => {
     const p = await makeProgramme();
     const created = await call(students.POST, { method: "POST", json: studentBody(p.id) });
     const log = await db.auditLog.findFirstOrThrow({ where: { studentId: created.data.id } });
-    expect(log.actor).toBe("staff:registry-admin");
+    expect(log.actor).toMatch(/^user:registry_admin\..*@test\.local$/);
   });
 });

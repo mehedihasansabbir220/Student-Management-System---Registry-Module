@@ -8,6 +8,7 @@ import { NavLink } from "@/components/nav-link";
 import { db } from "@/server/db";
 import { getCurrentUser } from "@/server/session";
 import { logger } from "@/server/logger";
+import { ROLE_LABEL, isStaff } from "@/domain/permissions";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -38,7 +39,7 @@ async function loadHeader() {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const { user, students, dbDown } = await loadHeader();
-  const current = !user ? "" : user.role === "STAFF" ? "STAFF" : user.studentId;
+  const current = !user ? "" : user.role !== "STUDENT" ? "STAFF" : (user.studentId ?? "");
 
   return (
     // suppressHydrationWarning: browser extensions (e.g. Grammarly) inject attributes into <html>/<body>
@@ -53,7 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <span className="hidden sm:inline">Registry</span>
               </Link>
               <nav className="flex flex-wrap gap-1">
-                {user?.role === "STAFF" && (
+                {user && isStaff(user.role) && (
                   <>
                     <NavLink href="/staff" exact>Dashboard</NavLink>
                     <NavLink href="/staff/students">Students</NavLink>
@@ -76,7 +77,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {user && (
             <div className="border-t border-white/10 bg-indigo-950/40 text-xs text-indigo-100">
               <div className="mx-auto max-w-7xl px-4 py-1.5 sm:px-6">
-                {user.role === "STAFF" ? "Signed in as Registry Administrator" : `Student view — ${user.fullName} (${user.studentNumber})`}
+                {user.role !== "STUDENT" ? `Signed in as ${user.name} (${ROLE_LABEL[user.role]})` : `Student view — ${user.name} (${user.studentNumber})`}
                 <span className="ml-2 text-indigo-300">· Demo role toggle (no real authentication)</span>
               </div>
             </div>

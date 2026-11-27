@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/server/session";
 
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
-  if (user?.role !== "STUDENT") redirect(user ? "/staff" : "/");
+  if (!user) redirect("/login");
+  if (user.role !== "STUDENT") redirect("/staff");
   return <>{children}</>;
 }
