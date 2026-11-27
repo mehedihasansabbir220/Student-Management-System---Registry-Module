@@ -28,7 +28,7 @@ type ErrorBody = { error?: { code: string; message: string; fields?: Record<stri
 let refreshing: Promise<boolean> | null = null;
 
 /** One refresh at a time; every caller awaiting it shares the outcome. */
-function refreshSession(): Promise<boolean> {
+export function refreshSession(): Promise<boolean> {
   refreshing ??= fetch("/api/auth/refresh", { method: "POST" })
     .then((r) => r.ok)
     .catch(() => false)
@@ -60,24 +60,31 @@ async function send(url: string, opts: Options): Promise<{ res: Response; data: 
   return { res, data };
 }
 
-const isExpired = (res: Response, data: unknown) => res.status === 401 && (data as ErrorBody | null)?.error?.code === "TOKEN_EXPIRED";
+export const isExpiredResponse = (status: number, data: unknown) => status === 401 && (data as ErrorBody | null)?.error?.code === "TOKEN_EXPIRED";
+const isExpired = (res: Response, data: unknown) => isExpiredResponse(res.status, data);
+
+/** The client-side error for a non-2xx response, from the server's standard error body. */
+export function toApiError(status: number, data: unknown): ApiClientError {
+  const e = (data as ErrorBody | null)?.error;
+  if (e) return new ApiClientError(e.message, status, e.code, e.fields, e.requestId);
+  return new ApiClientError(`The server returned an unexpected response (${status}).`, status, "UNEXPECTED_RESPONSE");
+}
+
+/** Session is over: go to sign-in and come back here afterwards. */
+export function sessionEnded(): ApiClientError {
+  const here = `${globalThis.location?.pathname ?? "/"}${globalThis.location?.search ?? ""}`;
+  globalThis.location?.assign(`/login?next=${encodeURIComponent(here)}`);
+  return new ApiClientError("Your session has ended. Please sign in again.", 401, "SESSION_EXPIRED");
+}
 
 export async function apiFetch<T = unknown>(url: string, opts: Options = {}): Promise<T> {
   let { res, data } = await send(url, opts);
 
   if (isExpired(res, data)) {
-    if (!(await refreshSession())) {
-      const here = `${globalThis.location?.pathname ?? "/"}${globalThis.location?.search ?? ""}`;
-      globalThis.location?.assign(`/login?next=${encodeURIComponent(here)}`);
-      throw new ApiClientError("Your session has ended. Please sign in again.", 401, "SESSION_EXPIRED");
-    }
+    if (!(await refreshSession())) throw sessionEnded();
     ({ res, data } = await send(url, opts));
   }
 
-  if (!res.ok) {
-    const e = (data as ErrorBody | null)?.error;
-    if (e) throw new ApiClientError(e.message, res.status, e.code, e.fields, e.requestId);
-    throw new ApiClientError(`The server returned an unexpected response (${res.status}).`, res.status, "UNEXPECTED_RESPONSE");
-  }
+  if (!res.ok) throw toApiError(res.status, data);
   return data as T;
 }
