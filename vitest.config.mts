@@ -17,7 +17,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["tests/unit/**/*.test.ts"],
+          include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
           environment: "node",
           // Keep test noise out of the real application log.
           env: { LOG_FILE: "", LOG_LEVEL: "error", JWT_SECRET: TEST_JWT_SECRET },

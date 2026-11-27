@@ -19,11 +19,12 @@ type Options<In, R> = {
  * react-hook-form + the shared zod schema for instant client-side checks, with
  * the API as the source of truth: field errors from the response are put on
  * their inputs, anything else becomes a toast with the request reference.
- * Values are kept on failure so the user never retypes a form.
+ * Values are kept on failure so the user never retypes a form. `submit` receives
+ * the raw (typed) values once they pass the schema.
  */
 export function useApiForm<S extends z.ZodType<FieldValues, FieldValues>, R = unknown>(
   schema: S,
-  submit: (values: z.output<S>) => Promise<R>,
+  submit: (values: z.input<S>) => Promise<R>,
   opts: Options<z.input<S>, R> = {},
 ) {
   const router = useRouter();
@@ -36,9 +37,11 @@ export function useApiForm<S extends z.ZodType<FieldValues, FieldValues>, R = un
   // Fields this form renders; an API error on any other field must still reach the user (toast).
   const formKeys = new Set([...Object.keys((schema as { shape?: object }).shape ?? {}), ...Object.keys(opts.defaultValues ?? {})]);
 
-  const onSubmit = form.handleSubmit(async (values) => {
+  const onSubmit = form.handleSubmit(async () => {
     try {
-      const result = await submit(values);
+      // Validation passed, but send what the user typed: the API parses it again with the
+      // same schema, and parsed values (Dates, pence) would not survive a JSON round trip.
+      const result = await submit(form.getValues());
       if (opts.successToast) notifySuccess(opts.successToast);
       opts.onSuccess?.(result);
       if (opts.refresh !== false) router.refresh();
