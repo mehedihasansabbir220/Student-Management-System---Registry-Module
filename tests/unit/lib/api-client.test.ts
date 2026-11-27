@@ -22,14 +22,14 @@ describe("apiFetch", () => {
 
   it("throws ApiClientError carrying code, field errors and request id", async () => {
     respond({ error: { code: "VALIDATION_ERROR", message: "Some fields are invalid", fields: { email: "Bad" }, requestId: "r-1" } }, 400);
-    const err = await apiFetch("/api/x").catch((e) => e);
+    const err = await apiFetch("/api/x").catch((e: ApiClientError) => e);
     expect(err).toBeInstanceOf(ApiClientError);
     expect(err).toMatchObject({ status: 400, code: "VALIDATION_ERROR", fields: { email: "Bad" }, requestId: "r-1" });
   });
 
   it("handles non-JSON error pages (e.g. a proxy 502) gracefully", async () => {
     respond("<html>Bad gateway</html>", 502);
-    const err = await apiFetch("/api/x").catch((e) => e);
+    const err = await apiFetch("/api/x").catch((e: ApiClientError) => e);
     expect(err).toBeInstanceOf(ApiClientError);
     expect(err.status).toBe(502);
     expect(err.message).toMatch(/unexpected/i);
@@ -37,7 +37,7 @@ describe("apiFetch", () => {
 
   it("reports network failures as a friendly error", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
-    const err = await apiFetch("/api/x").catch((e) => e);
+    const err = await apiFetch("/api/x").catch((e: ApiClientError) => e);
     expect(err).toBeInstanceOf(ApiClientError);
     expect(err.code).toBe("NETWORK_ERROR");
   });

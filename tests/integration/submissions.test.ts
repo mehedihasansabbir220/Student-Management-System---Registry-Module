@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { db } from "@/server/db";
-import { readSubmissionFile, submitAssessment } from "@/server/services/submissions";
+import { listStudentSubmissions, readSubmissionFile, submitAssessment } from "@/server/services/submissions";
 import { resolveStoragePath } from "@/server/storage";
 import {
   BusinessRuleError,
@@ -115,5 +115,18 @@ describe("readSubmissionFile", () => {
 describe("resolveStoragePath", () => {
   it("refuses keys that escape the upload directory", () => {
     expect(() => resolveStoragePath("../../etc/passwd")).toThrow();
+  });
+});
+
+describe("listStudentSubmissions", () => {
+  it("lists a student's submissions newest first with assessment details, without storage keys", async () => {
+    const { m, a, s } = await setup();
+    const second = await makeAssessment(m.id, new Date("2026-03-20T17:00:00Z"), "Essay 2");
+    await upload(a.id, s.id, new Date("2026-03-10T10:00:00Z"));
+    await upload(second.id, s.id, new Date("2026-03-12T10:00:00Z"));
+    const list = await listStudentSubmissions(s.id);
+    expect(list.map((x) => x.assessment.title)).toEqual(["Essay 2", "Essay 1"]);
+    expect(list[0].assessment.module.code).toBe(m.code);
+    expect(list[0]).not.toHaveProperty("storageKey");
   });
 });

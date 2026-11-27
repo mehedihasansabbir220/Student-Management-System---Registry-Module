@@ -120,3 +120,12 @@ export async function readSubmissionFile(submissionId: string, viewer: Viewer) {
     throw new NotFoundError("Submission file");
   }
 }
+
+export async function listStudentSubmissions(studentId: string) {
+  const subs = await db.submission.findMany({
+    where: { studentId },
+    orderBy: { submittedAt: "desc" },
+    include: { assessment: { select: { id: true, title: true, deadline: true, module: { select: { code: true, title: true } } } } },
+  });
+  return subs.map(({ storageKey: _storageKey, ...rest }) => rest);
+}
